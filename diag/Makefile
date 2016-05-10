@@ -8,7 +8,7 @@ include ../config/devices/devices.mk
 INCLUDE+= -I../inc/# include files libs
 INCLUDE+= -I../src/# include files from source code
 
-TARGETS =  toefl_video toefl_analytics toefl_compare show com figure17 vmax toefl_radial ncdiag filamentdiag fftwdiag crosscoherencdiag feltorSdiag feltorSHdiag feltordiag vmaxnc feltorSHvmaxdiag feltorSHvmaxisodiag feltorSHcompdiag feltorSHcompalldiag feltorSHvCOMdiag feltorSHvCOMisodiag feltorSHcompallvmaxdiag feltorSHcompallisovmaxdiag 
+TARGETS =  toefl_video toefl_analytics toefl_compare show com figure17 vmax toefl_radial ncdiag filamentdiag fftwdiag crosscoherencdiag feltorSdiag feltorSHdiag feltordiag vmaxnc feltorSHvmaxdiag feltorSHvmaxisodiag feltorSHcompdiag feltorSHcompalldiag feltorSHvCOMdiag feltorSHvCOMisodiag feltorSHcompallvmaxdiag feltorSHcompallisovmaxdiag feltorSHvymaxdiag feltorSHvymaxisodiag
 
 all: $(TARGETS)
 
@@ -40,6 +40,10 @@ feltorSHdiag: feltorSHdiag.cu
 feltorSHvmaxdiag: feltorSHvmaxdiag.cu
 	$(CC) $(OPT) $(CFLAGS) $< -o $@ $(INCLUDE) $(LIBS)
 feltorSHvmaxisodiag: feltorSHvmaxisodiag.cu
+	$(CC) $(OPT) $(CFLAGS) $< -o $@ $(INCLUDE) $(LIBS)
+feltorSHvymaxdiag: feltorSHvymaxdiag.cu
+	$(CC) $(OPT) $(CFLAGS) $< -o $@ $(INCLUDE) $(LIBS)
+feltorSHvymaxisodiag: feltorSHvymaxisodiag.cu
 	$(CC) $(OPT) $(CFLAGS) $< -o $@ $(INCLUDE) $(LIBS)
 feltorSHvCOMdiag: feltorSHvCOMdiag.cu
 	$(CC) $(OPT) $(CFLAGS) $< -o $@ $(INCLUDE) $(LIBS)

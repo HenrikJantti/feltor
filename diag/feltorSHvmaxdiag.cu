@@ -62,47 +62,48 @@ int main( int argc, char* argv[])
         double dpe=neamp+teamp+neamp*teamp;
         double gammath =20./sqrt((2+p.amp)*p.amp*p.mcv/(p.sigma*(1.)));
         double gammathreal = sqrt((2+neamp)*neamp*p.mcv/p.sigma);
-        double gammathrealdpe = sqrt(dpe*p.mcv/p.sigma);
-        if (p.sigma==10.)
-        {
-            if (p.tau[1]==4.) gammathrealdpe =15./sqrt(dpe*p.mcv/p.sigma);
-            if (p.tau[1]==2.) gammathrealdpe =17./sqrt(dpe*p.mcv/p.sigma);
-            if (p.tau[1]==1.) gammathrealdpe =19./sqrt(dpe*p.mcv/p.sigma);
-            if (p.tau[1]==0.5) gammathrealdpe =19./sqrt(dpe*p.mcv/p.sigma);
-            if (p.tau[1]==0.1) gammathrealdpe =19./sqrt(dpe*p.mcv/p.sigma);
-            if (p.tau[1]==0.) gammathrealdpe =20./sqrt(dpe*p.mcv/p.sigma);
-        }
-        if (p.sigma==20.)
-        {
-            if (p.tau[1]==4.) gammathrealdpe =15./sqrt(dpe*p.mcv/p.sigma);
-            if (p.tau[1]==2.) gammathrealdpe =15./sqrt(dpe*p.mcv/p.sigma);
-            if (p.tau[1]==1.) gammathrealdpe =15./sqrt(dpe*p.mcv/p.sigma);
-            if (p.tau[1]==0.5) gammathrealdpe =15./sqrt(dpe*p.mcv/p.sigma);
-            if (p.tau[1]==0.1) gammathrealdpe =15./sqrt(dpe*p.mcv/p.sigma);
-            if (p.tau[1]==0.) gammathrealdpe =15./sqrt(dpe*p.mcv/p.sigma);
-        }
-        if (p.sigma==5.)
-        {
-            if (p.tau[1]==4.) 
-            {
-                if (p.amp==2.) gammathrealdpe =16./sqrt(dpe*p.mcv/p.sigma);
-                if (p.amp==1.) gammathrealdpe =13./sqrt(dpe*p.mcv/p.sigma);
-                if (p.amp==0.5) gammathrealdpe =17./sqrt(dpe*p.mcv/p.sigma);
-                if (p.amp==0.1) gammathrealdpe =17./sqrt(dpe*p.mcv/p.sigma);
-            }
-            if (p.tau[1]==2.) 
-            {
-                if (p.amp==2.) gammathrealdpe =20./sqrt(dpe*p.mcv/p.sigma);
-                if (p.amp==1.) gammathrealdpe =20./sqrt(dpe*p.mcv/p.sigma);
-                if (p.amp==0.5) gammathrealdpe =20./sqrt(dpe*p.mcv/p.sigma);
-                if (p.amp==0.1) gammathrealdpe =15./sqrt(dpe*p.mcv/p.sigma);
-            }
-            if (p.tau[1]==1.) gammathrealdpe =20./sqrt(dpe*p.mcv/p.sigma);
-            if (p.tau[1]==0.5) gammathrealdpe =20./sqrt(dpe*p.mcv/p.sigma);
-            if (p.tau[1]==0.1) gammathrealdpe =20./sqrt(dpe*p.mcv/p.sigma);
-            if (p.tau[1]==0.) gammathrealdpe =20./sqrt(dpe*p.mcv/p.sigma);
-        }
+//         double gammathrealdpe = sqrt(dpe*p.mcv/p.sigma);
+//         if (p.sigma==10.)
+//         {
+//             if (p.tau[1]==4.) gammathrealdpe =15./sqrt(dpe*p.mcv/p.sigma);
+//             if (p.tau[1]==2.) gammathrealdpe =17./sqrt(dpe*p.mcv/p.sigma);
+//             if (p.tau[1]==1.) gammathrealdpe =19./sqrt(dpe*p.mcv/p.sigma);
+//             if (p.tau[1]==0.5) gammathrealdpe =19./sqrt(dpe*p.mcv/p.sigma);
+//             if (p.tau[1]==0.1) gammathrealdpe =19./sqrt(dpe*p.mcv/p.sigma);
+//             if (p.tau[1]==0.) gammathrealdpe =20./sqrt(dpe*p.mcv/p.sigma);
+//         }
+//         if (p.sigma==20.)
+//         {
+//             if (p.tau[1]==4.) gammathrealdpe =15./sqrt(dpe*p.mcv/p.sigma);
+//             if (p.tau[1]==2.) gammathrealdpe =15./sqrt(dpe*p.mcv/p.sigma);
+//             if (p.tau[1]==1.) gammathrealdpe =15./sqrt(dpe*p.mcv/p.sigma);
+//             if (p.tau[1]==0.5) gammathrealdpe =15./sqrt(dpe*p.mcv/p.sigma);
+//             if (p.tau[1]==0.1) gammathrealdpe =15./sqrt(dpe*p.mcv/p.sigma);
+//             if (p.tau[1]==0.) gammathrealdpe =15./sqrt(dpe*p.mcv/p.sigma);
+//         }
+//         if (p.sigma==5.)
+//         {
+//             if (p.tau[1]==4.) 
+//             {
+//                 if (p.amp==2.) gammathrealdpe =16./sqrt(dpe*p.mcv/p.sigma);
+//                 if (p.amp==1.) gammathrealdpe =13./sqrt(dpe*p.mcv/p.sigma);
+//                 if (p.amp==0.5) gammathrealdpe =17./sqrt(dpe*p.mcv/p.sigma);
+//                 if (p.amp==0.1) gammathrealdpe =17./sqrt(dpe*p.mcv/p.sigma);
+//             }
+//             if (p.tau[1]==2.) 
+//             {
+//                 if (p.amp==2.) gammathrealdpe =20./sqrt(dpe*p.mcv/p.sigma);
+//                 if (p.amp==1.) gammathrealdpe =20./sqrt(dpe*p.mcv/p.sigma);
+//                 if (p.amp==0.5) gammathrealdpe =20./sqrt(dpe*p.mcv/p.sigma);
+//                 if (p.amp==0.1) gammathrealdpe =15./sqrt(dpe*p.mcv/p.sigma);
+//             }
+//             if (p.tau[1]==1.) gammathrealdpe =20./sqrt(dpe*p.mcv/p.sigma);
+//             if (p.tau[1]==0.5) gammathrealdpe =20./sqrt(dpe*p.mcv/p.sigma);
+//             if (p.tau[1]==0.1) gammathrealdpe =20./sqrt(dpe*p.mcv/p.sigma);
+//             if (p.tau[1]==0.) gammathrealdpe =20./sqrt(dpe*p.mcv/p.sigma);
+//         }
 
+        double gammathrealdpe = 10./sqrt(dpe*(1+p.tau[1])*p.mcv/p.sigma/2./(1.+neamp));
 
 
         std::vector<double>::iterator timepoint;
@@ -121,7 +122,8 @@ int main( int argc, char* argv[])
                   <<*std::max_element(v.begin(),v.begin()+timepos) << " "
                   <<gammathreal <<" "
                   <<gammathrealdpe <<" "
-                  <<dpe <<std::endl;   
+                  <<dpe <<" "
+                  <<sqrt(dpe*(1+p.tau[1])*p.mcv/p.sigma/2./(1.+neamp)) <<" "<<std::endl;   
     }
 
     

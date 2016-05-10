@@ -15,7 +15,7 @@
 
 #include "file/read_input.h"
 #include "file/nc_utilities.h"
-#include "feltorS/parameters.h"
+#include "feltorShw/parameters.h"
 // #include "probes.h"
 
 int main( int argc, char* argv[])
