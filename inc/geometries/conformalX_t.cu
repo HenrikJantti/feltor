@@ -11,8 +11,8 @@
 
 #include "dg/backend/timer.cuh"
 #include "solovev.h"
-//#include "conformalX.h"
-#include "orthogonalX.h"
+#include "conformalX.h"
+// #include "orthogonalX.h"
 #include "dg/ds.h"
 #include "init.h"
 
@@ -21,7 +21,7 @@
 //typedef dg::FieldAligned< solovev::ConformalXGrid3d<dg::DVec> , dg::IDMatrix, dg::DVec> DFA;
 double sine( double x) {return sin(x);}
 double cosine( double x) {return cos(x);}
-typedef dg::FieldAligned< solovev::OrthogonalXGrid3d<dg::DVec> , dg::IDMatrix, dg::DVec> DFA;
+typedef dg::FieldAligned< conformal::XGrid3d<dg::DVec> , dg::IDMatrix, dg::DVec> DFA;
 
 int main( int argc, char* argv[])
 {
@@ -59,8 +59,8 @@ try{
     std::cout << "Psi min "<<psip(gp.R_0, 0)<<"\n";
     std::cout << "Constructing conformal grid ... \n";
     t.tic();
-    solovev::OrthogonalXGrid3d<dg::DVec> g3d(gp, psi_0, fx_0, 0., n, Nx, Ny,Nz, dg::DIR, dg::NEU);
-    solovev::OrthogonalXGrid2d<dg::DVec> g2d = g3d.perp_grid();
+    conformal::XGrid3d<dg::DVec> g3d(gp, psi_0, fx_0, 0., n, Nx, Ny,Nz, dg::DIR, dg::NEU);
+    conformal::XGrid2d<dg::DVec> g2d = g3d.perp_grid();
     t.toc();
     std::cout << "Construction took "<<t.diff()<<"s"<<std::endl;
     dg::Grid1d<double> g1d( g2d.x0(), g2d.x1(), g2d.n(), g2d.Nx());
@@ -105,10 +105,10 @@ try{
 
     err = nc_put_var_double( ncid, coordsID[0], X.data());
     err = nc_put_var_double( ncid, coordsID[1], Y.data());
-    //err = nc_put_var_double( ncid, coord1D[0], g3d.rx0().data());
-    //err = nc_put_var_double( ncid, coord1D[1], g3d.zx0().data());
-    //err = nc_put_var_double( ncid, coord1D[2], g3d.rx1().data());
-    //err = nc_put_var_double( ncid, coord1D[3], g3d.zx1().data());
+    err = nc_put_var_double( ncid, coord1D[0], g3d.rx0().data());
+    err = nc_put_var_double( ncid, coord1D[1], g3d.zx0().data());
+    err = nc_put_var_double( ncid, coord1D[2], g3d.rx1().data());
+    err = nc_put_var_double( ncid, coord1D[3], g3d.zx1().data());
     err = nc_put_var_double( ncid, coord1D[4], g3d.f_x().data());
     //err = nc_put_var_double( ncid, coordsID[2], g.z().data());
 
@@ -149,7 +149,7 @@ try{
     dg::blas1::pointwiseDivide( ones, temp0, temp0);
     dg::blas1::axpby( 1., temp0, -1., g2d.vol(), temp0);
     std::cout << "Rel Error of volume form is "<<sqrt(dg::blas2::dot( temp0, w3d, temp0))/sqrt( dg::blas2::dot(g2d.vol(), w3d, g2d.vol()))<<"\n";
-    solovev::FieldY fieldY(gp);
+    solovev::conformal::FieldY fieldY(gp);
     //solovev::ConformalField fieldY(gp);
     dg::DVec fby = dg::pullback( fieldY, g2d);
     dg::blas1::pointwiseDot( fby, f_, fby);
@@ -185,33 +185,33 @@ try{
     std::cout << "Note that the error might also come from the volume in RZP!\n";
 
     ///////////////////////TEST 3d grid//////////////////////////////////////
-    std::cout << "Start DS test!"<<std::endl;
-    const dg::DVec vol3d = dg::create::volume( g3d);
-    DFA fieldaligned( solovev::OrthogonalXField( gp, g2d, g2d.g()), g3d, gp.rk4eps, dg::NoLimiter(), dg::NEU); 
-
-    dg::DS<DFA, dg::Composite<dg::DMatrix>, dg::DVec> ds( fieldaligned, solovev::OrthogonalXField(gp, g2d, g2d.g()), dg::normed, dg::centered, false);
-    dg::DVec B = dg::pullback( solovev::InvB(gp), g3d), divB(B);
-    dg::DVec lnB = dg::pullback( solovev::LnB(gp), g3d), gradB(B);
-    dg::DVec gradLnB = dg::pullback( solovev::GradLnB(gp), g3d);
-    dg::blas1::pointwiseDivide( ones, B, B);
-
-    ds.centeredT( B, divB);
-    std::cout << "Divergence of B is "<<sqrt( dg::blas2::dot( divB, vol3d, divB))<<"\n";
-    ds.centered( lnB, gradB);
-    dg::blas1::axpby( 1., gradB, -1., gradLnB, gradLnB);
-    //test if topological shift was correct!!
-    //dg::blas1::pointwiseDot(cutter, gradLnB, gradLnB);
-    double norm = sqrt( dg::blas2::dot( gradB, vol3d, gradB) );
-    std::cout << "rel Error of lnB is    "<<sqrt( dg::blas2::dot( gradLnB, vol3d, gradLnB))/norm<<" (doesn't fullfill boundary conditions so it was cut before separatrix)\n";
-
-    const dg::DVec function = dg::pullback(solovev::FuncNeu(gp), g3d);
-    dg::DVec temp(function);
-    const dg::DVec derivative = dg::pullback(solovev::DeriNeu(gp), g3d);
-    ds( function, temp);
-    dg::blas1::axpby( 1., temp, -1., derivative, temp);
-    norm = sqrt( dg::blas2::dot( derivative, vol3d, derivative) );
-    std::cout << "rel Error of DS  is    "<<sqrt( dg::blas2::dot( temp, vol3d, temp))/norm<<"\n";
-    X = gradB;
+//     std::cout << "Start DS test!"<<std::endl;
+//     const dg::DVec vol3d = dg::create::volume( g3d);
+//     DFA fieldaligned( solovev::OrthogonalXField( gp, g2d, g2d.g()), g3d, gp.rk4eps, dg::NoLimiter(), dg::NEU); 
+// 
+//     dg::DS<DFA, dg::Composite<dg::DMatrix>, dg::DVec> ds( fieldaligned, solovev::OrthogonalXField(gp, g2d, g2d.g()), dg::normed, dg::centered, false);
+//     dg::DVec B = dg::pullback( solovev::InvB(gp), g3d), divB(B);
+//     dg::DVec lnB = dg::pullback( solovev::LnB(gp), g3d), gradB(B);
+//     dg::DVec gradLnB = dg::pullback( solovev::GradLnB(gp), g3d);
+//     dg::blas1::pointwiseDivide( ones, B, B);
+// 
+//     ds.centeredT( B, divB);
+//     std::cout << "Divergence of B is "<<sqrt( dg::blas2::dot( divB, vol3d, divB))<<"\n";
+//     ds.centered( lnB, gradB);
+//     dg::blas1::axpby( 1., gradB, -1., gradLnB, gradLnB);
+//     //test if topological shift was correct!!
+//     //dg::blas1::pointwiseDot(cutter, gradLnB, gradLnB);
+//     double norm = sqrt( dg::blas2::dot( gradB, vol3d, gradB) );
+//     std::cout << "rel Error of lnB is    "<<sqrt( dg::blas2::dot( gradLnB, vol3d, gradLnB))/norm<<" (doesn't fullfill boundary conditions so it was cut before separatrix)\n";
+// 
+//     const dg::DVec function = dg::pullback(solovev::FuncNeu(gp), g3d);
+//     dg::DVec temp(function);
+//     const dg::DVec derivative = dg::pullback(solovev::DeriNeu(gp), g3d);
+//     ds( function, temp);
+//     dg::blas1::axpby( 1., temp, -1., derivative, temp);
+//     norm = sqrt( dg::blas2::dot( derivative, vol3d, derivative) );
+//     std::cout << "rel Error of DS  is    "<<sqrt( dg::blas2::dot( temp, vol3d, temp))/norm<<"\n";
+//     X = gradB;
     err = nc_put_var_double( ncid, divBID, X.data());
     err = nc_close( ncid);
 

@@ -13,7 +13,7 @@
 
 
 
-namespace solovev
+namespace conformal
 {
 
 namespace detail
@@ -23,7 +23,7 @@ namespace detail
 //good as it can, i.e. until machine precision is reached
 struct Fpsi
 {
-    Fpsi( const GeomParameters& gp, double psi_0): 
+    Fpsi( const solovev::GeomParameters& gp, double psi_0): 
         gp_(gp), fieldRZYT_(gp), fieldRZtau_(gp), psi_0(psi_0) 
     {
         /**
@@ -36,7 +36,7 @@ struct Fpsi
          * @return the value for R
          */
         R_init = gp.R_0 + 0.5*gp.a; Z_init = 0;
-        Psip psip(gp);
+        solovev::Psip psip(gp);
         psi_0 =  psip(R_init, Z_init);
         //own implementation so as not to need a function object
         //solovev::Psip psip( gp);
@@ -66,7 +66,7 @@ struct Fpsi
         thrust::host_vector<double> begin2d( 2, 0), end2d( begin2d), end2d_old(begin2d); 
         begin2d[0] = end2d[0] = end2d_old[0] = R_init;
         begin2d[1] = end2d[1] = end2d_old[1] = Z_init;
-        Psip psip(gp_);
+        solovev::Psip psip(gp_);
         //psi_0 =  psip(R_init, Z_init);
         //std::cout << "In init function\n";
         double eps = 1e10, eps_old = 2e10;
@@ -203,8 +203,8 @@ struct Fpsi
         //now compute f and starting values 
         thrust::host_vector<double> begin( 4, 0), end(begin), temp(begin);
         const double f_psi = construct_f( psi, begin[0], begin[1]);
-        PsipR psipR(gp_);
-        PsipZ psipZ(gp_);
+        solovev::PsipR psipR(gp_);
+        solovev::PsipZ psipZ(gp_);
         double psipR_ = psipR( begin[0], begin[1]), psipZ_ = psipZ( begin[0], begin[1]);
         double psip2 = psipR_*psipR_+psipZ_*psipZ_;
         begin[2] = f_psi * (1.0/psip2+0.001)* psipZ_;
@@ -212,7 +212,7 @@ struct Fpsi
 
         R_0 = begin[0], Z_0 = begin[1];
         //std::cout <<f_psi<<" "<<" "<< begin[0] << " "<<begin[1]<<"\t";
-        FieldRZYRYZY fieldRZY(gp_);
+        solovev::conformal::FieldRZYRYZY fieldRZY(gp_);
         fieldRZY.set_f(f_psi);
         fieldRZY.set_fp(fprime);
         unsigned steps = 1;
@@ -248,9 +248,9 @@ struct Fpsi
 
     }
     private:
-    const GeomParameters gp_;
-    const FieldRZYT fieldRZYT_;
-    const FieldRZtau fieldRZtau_;
+    const solovev::GeomParameters gp_;
+    const solovev::conformal::FieldRZYT fieldRZYT_;
+    const solovev::FieldRZtau fieldRZtau_;
     double R_init, Z_init;
     const double psi_0;
 
@@ -259,7 +259,7 @@ struct Fpsi
 //This struct computes -2pi/f with a fixed number of steps for all psi
 struct FieldFinv
 {
-    FieldFinv( const GeomParameters& gp, double psi_0, unsigned N_steps = 500): 
+    FieldFinv( const solovev::GeomParameters& gp, double psi_0, unsigned N_steps = 500): 
         psi_0(psi_0), 
         fpsi_(gp, psi_0), fieldRZYT_(gp), N_steps(N_steps)
             { }
@@ -276,23 +276,23 @@ struct FieldFinv
     private:
     double psi_0;
     Fpsi fpsi_;
-    FieldRZYT fieldRZYT_;
+    solovev::conformal::FieldRZYT fieldRZYT_;
     thrust::host_vector<double> fpsi_neg_inv;
     unsigned N_steps;
 };
 } //namespace detail
 
 template< class container>
-struct ConformalRingGrid2d; 
+struct RingGrid2d; 
 
 /**
  * @brief A three-dimensional grid based on "almost-conformal" coordinates by Ribeiro and Scott 2010
  */
 template< class container>
-struct ConformalRingGrid3d : public dg::Grid3d<double>
+struct RingGrid3d : public dg::Grid3d<double>
 {
     typedef dg::CurvilinearCylindricalTag metric_category;
-    typedef ConformalRingGrid2d<container> perpendicular_grid;
+    typedef RingGrid2d<container> perpendicular_grid;
 
     /**
      * @brief Construct 
@@ -306,10 +306,10 @@ struct ConformalRingGrid3d : public dg::Grid3d<double>
      * @param Nz The number of points in z-direction
      * @param bcx The boundary condition in x (y,z are periodic)
      */
-    ConformalRingGrid3d( GeomParameters gp, double psi_0, double psi_1, unsigned n, unsigned Nx, unsigned Ny, unsigned Nz, dg::bc bcx): 
+    RingGrid3d( solovev::GeomParameters gp, double psi_0, double psi_1, unsigned n, unsigned Nx, unsigned Ny, unsigned Nz, dg::bc bcx): 
         dg::Grid3d<double>( 0, 1, 0., 2.*M_PI, 0., 2.*M_PI, n, Nx, Ny, Nz, bcx, dg::PER, dg::PER)
     { 
-        solovev::detail::Fpsi fpsi( gp, psi_0);
+        conformal::detail::Fpsi fpsi( gp, psi_0);
         double x_1 = fpsi.find_x1( psi_1);
         if( x_1 > 0)
             init_X_boundaries( 0., x_1);
@@ -374,11 +374,11 @@ struct ConformalRingGrid3d : public dg::Grid3d<double>
     const container& g_pp()const{return g_pp_;}
     const container& vol()const{return vol_;}
     const container& perpVol()const{return vol2d_;}
-    perpendicular_grid perp_grid() const { return ConformalRingGrid2d<container>(*this);}
+    perpendicular_grid perp_grid() const { return RingGrid2d<container>(*this);}
     private:
     //call the construct_rzy function for all psi_x and lift to 3d grid
     //construct r,z,xr,xz,yr,yz,f_x
-    void construct_rz( const GeomParameters& gp, double psi_0, thrust::host_vector<double>& psi_x)
+    void construct_rz( const solovev::GeomParameters& gp, double psi_0, thrust::host_vector<double>& psi_x)
     {
         //std::cout << "In grid function:\n";
         detail::Fpsi fpsi( gp, psi_0);
@@ -452,25 +452,25 @@ struct ConformalRingGrid3d : public dg::Grid3d<double>
  * @brief A three-dimensional grid based on "almost-conformal" coordinates by Ribeiro and Scott 2010
  */
 template< class container>
-struct ConformalRingGrid2d : public dg::Grid2d<double>
+struct RingGrid2d : public dg::Grid2d<double>
 {
     typedef dg::CurvilinearCylindricalTag metric_category;
-    ConformalRingGrid2d( const GeomParameters gp, double psi_0, double psi_1, unsigned n, unsigned Nx, unsigned Ny, dg::bc bcx): 
+    RingGrid2d( const solovev::GeomParameters gp, double psi_0, double psi_1, unsigned n, unsigned Nx, unsigned Ny, dg::bc bcx): 
         dg::Grid2d<double>( 0, 1., 0., 2*M_PI, n,Nx,Ny, bcx, dg::PER)
     {
-        solovev::detail::Fpsi fpsi( gp, psi_0);
+        conformal::detail::Fpsi fpsi( gp, psi_0);
         double x_1 = fpsi.find_x1( psi_1);
         if( x_1 > 0)
             init_X_boundaries( 0., x_1);
         else
             init_X_boundaries( x_1, 0.);
-        ConformalRingGrid3d<container> g( gp, psi_0, psi_1, n,Nx,Ny,1,bcx);
+        RingGrid3d<container> g( gp, psi_0, psi_1, n,Nx,Ny,1,bcx);
         f_x_ = g.f_x();
         r_=g.r(), z_=g.z(), xr_=g.xr(), xz_=g.xz(), yr_=g.yr(), yz_=g.yz();
         g_xx_=g.g_xx(), g_xy_=g.g_xy(), g_yy_=g.g_yy();
         vol2d_=g.perpVol();
     }
-    ConformalRingGrid2d( const ConformalRingGrid3d<container>& g):
+    RingGrid2d( const RingGrid3d<container>& g):
         dg::Grid2d<double>( g.x0(), g.x1(), g.y0(), g.y1(), g.n(), g.Nx(), g.Ny(), g.bcx(), g.bcy())
     {
         f_x_ = g.f_x();
@@ -511,7 +511,7 @@ struct ConformalRingGrid2d : public dg::Grid2d<double>
  */ 
 struct ConformalField
 {
-    ConformalField( GeomParameters gp,const thrust::host_vector<double>& x, const thrust::host_vector<double>& f_x):
+    ConformalField( solovev::GeomParameters gp,const thrust::host_vector<double>& x, const thrust::host_vector<double>& f_x):
         gp_(gp),
         psipR_(gp), psipZ_(gp),
         ipol_(gp), invB_(gp), last_idx(0), x_(x), fx_(f_x)
@@ -560,11 +560,11 @@ struct ConformalField
         return 0;
     }
     
-    GeomParameters gp_;
-    PsipR  psipR_;
-    PsipZ  psipZ_;
-    Ipol   ipol_;
-    InvB   invB_;
+    solovev::GeomParameters gp_;
+    solovev::PsipR  psipR_;
+    solovev::PsipZ  psipZ_;
+    solovev::Ipol   ipol_;
+    solovev::InvB   invB_;
     int last_idx;
     thrust::host_vector<double> x_;
     thrust::host_vector<double> fx_;
@@ -584,7 +584,7 @@ namespace dg{
  * @return A set of points representing F(x,y)
  */
 template< class BinaryOp, class container>
-thrust::host_vector<double> pullback( BinaryOp f, const solovev::ConformalRingGrid2d<container>& g)
+thrust::host_vector<double> pullback( BinaryOp f, const conformal::RingGrid2d<container>& g)
 {
     thrust::host_vector<double> vec( g.size());
     for( unsigned i=0; i<g.size(); i++)
@@ -593,7 +593,7 @@ thrust::host_vector<double> pullback( BinaryOp f, const solovev::ConformalRingGr
 }
 ///@cond
 template<class container>
-thrust::host_vector<double> pullback( double(f)(double,double), const solovev::ConformalRingGrid2d<container>& g)
+thrust::host_vector<double> pullback( double(f)(double,double), const conformal::RingGrid2d<container>& g)
 {
     return pullback<double(double,double),container>( f, g);
 }
@@ -609,7 +609,7 @@ thrust::host_vector<double> pullback( double(f)(double,double), const solovev::C
  * @return A set of points representing F(x,y,\phi)
  */
 template< class TernaryOp, class container>
-thrust::host_vector<double> pullback( TernaryOp f, const solovev::ConformalRingGrid3d<container>& g)
+thrust::host_vector<double> pullback( TernaryOp f, const conformal::RingGrid3d<container>& g)
 {
     thrust::host_vector<double> vec( g.size());
     unsigned size2d = g.n()*g.n()*g.Nx()*g.Ny();
@@ -623,7 +623,7 @@ thrust::host_vector<double> pullback( TernaryOp f, const solovev::ConformalRingG
 }
 ///@cond
 template<class container>
-thrust::host_vector<double> pullback( double(f)(double,double,double), const solovev::ConformalRingGrid3d<container>& g)
+thrust::host_vector<double> pullback( double(f)(double,double,double), const conformal::RingGrid3d<container>& g)
 {
     return pullback<double(double,double,double),container>( f, g);
 }
@@ -677,7 +677,7 @@ int determine_column( const thrust::host_vector<double>& absx, double x )
 }
 
 template<class container>
-cusp::coo_matrix<int, double, cusp::host_memory> interpolation( const thrust::host_vector<double>& x, const thrust::host_vector<double>& y, const solovev::ConformalRingGrid2d<container>& g, dg::bc bcz )
+cusp::coo_matrix<int, double, cusp::host_memory> interpolation( const thrust::host_vector<double>& x, const thrust::host_vector<double>& y, const conformal::RingGrid2d<container>& g, dg::bc bcz )
 {
     std::cout << "Hello interpolation!\n";
     assert( x.size() == y.size());
