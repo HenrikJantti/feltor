@@ -207,4 +207,13 @@ std::vector<Record1d> diagnostics1d_list = {
         }
     }
 };
+std::vector<Record> probe_diag_list = {
+    {"electrons_prb", "Electron density messured by probe",
+        []( dg::x::DVec& result, Variables& v ) {
+             dg::blas1::copy(v.f.density(0), result);
+        }
+    },
+
+};
+
 }//namespace esol

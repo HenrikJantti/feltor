@@ -117,6 +117,19 @@ int main( int argc, char* argv[])
     }
     DG_RANK0 std::cout << "Done!\n";
 
+    // Create Probe Vectors
+    std::vector<unsigned> probes;
+    std::vector<double>   probesx, probesy;
+    if (p.save_pb){
+        dg::Grid1d gridx( grid.x0(), grid.x1(), grid.n(), grid.Nx());
+        dg::Grid1d gridy( grid.y0(), grid.y1(), grid.n(), grid.Ny());
+        dg::HVec x_axis(dg::create::abscissas(gridx)), y_axis(dg::create::abscissas(gridy));
+        for(unsigned i=0; i<p.probes.size(); i++){
+            probes.push_back(p.probes[i][1] * p.Nx * p.n + p.probes[i][0]);//????
+            probesx.push_back(x_axis[p.probes[i][0]]);
+            probesy.push_back(y_axis[p.probes[i][1]]);
+    }}
+
     /// ////////////Init diagnostics ////////////////////
     esol::Variables var = {esol, p, y0};
     dg::Timer t;
@@ -218,8 +231,9 @@ int main( int argc, char* argv[])
         else
             outputfile = argv[2];
         /// //////////////////////set up netcdf/////////////////////////////////////
-        dg::file::NC_Error_Handle err;
+        dg::file::NC_Error_Handle err, err_prb;
         int ncid=-1;
+        int ncid_probe;
         try{
             DG_RANK0 err = nc_create( outputfile.c_str(),NC_NETCDF4|NC_CLOBBER, &ncid);
         }catch( std::exception& e)
@@ -228,6 +242,13 @@ int main( int argc, char* argv[])
             std::cerr << e.what()<<std::endl;
            return -1;
         }
+        // set up netcdf for probes
+        std::string nc_probe_file = argv[2];
+        nc_probe_file = nc_probe_file.insert(nc_probe_file.size() - 3, "_prbs" );
+        if(p.save_probes){
+            DG_RANK0 err_prb = nc_create( nc_probe_file.c_str(),NC_NETCDF4|NC_CLOBBER, &ncid_probe);
+        }
+
         /// Set global attributes
         std::map<std::string, std::string> att;
         att["title"] = "Output file of feltor/src/esol/esol.cu";
@@ -245,10 +266,12 @@ int main( int argc, char* argv[])
         att["source"] = "FELTOR";
         att["references"] = "https://github.com/feltor-dev/feltor";
         att["inputfile"] = inputfile;
-        for( auto pair : att)
+        for( auto pair : att){
             DG_RANK0 err = nc_put_att_text( ncid, NC_GLOBAL,
-                pair.first.data(), pair.second.size(), pair.second.data());
-
+                pair.first.data(), pair.second.size(), pair.second.data());  
+            DG_RANK0 err_prb = nc_put_att_text(ncid_probe, NC_GLOBAL, 
+                pair.first.data(),  pair.second.size(), pair.second.data());
+        }
         int dim_ids[3], restart_dim_ids[2], tvarID;
         std::map<std::string, int> id1d, id3d, restart_ids;
         dg::x::CartesianGrid2d grid_out(  0, p.lx, 0, p.ly, p.n_out, p.Nx_out, p.Ny_out, p.bc_x, p.bc_y
@@ -261,6 +284,7 @@ int main( int argc, char* argv[])
                 {"time", "y", "x"});
         DG_RANK0 err = dg::file::define_dimensions( ncid, restart_dim_ids, grid,
                 {"yr", "xr"});
+    
         //Create field IDs
         for( auto& record : esol::diagnostics2d_list)
         {
@@ -323,7 +347,22 @@ int main( int argc, char* argv[])
             dg::file::put_var_double( ncid, staticID, grid_out, transferH);
             DG_RANK0 err = nc_redef(ncid);
         }
+        
+
         DG_RANK0 err = nc_enddef(ncid);
+
+        //Creating Probe IDs
+        int probeID;
+        int TprbID, TprbvarID;
+        DG_RANK0 err_prb = dg::file::define_dimensions( ncid_probes, dim_ids, &tvarID, grid_out,
+                {"time", "y", "x"});
+        if (p.save_probes){
+                for( auto& record : esol::probe_diag_list){
+                    std::string name = record.name;
+                    std::string long_name = record.long_name;
+                }
+        }
+
         size_t start = {0};
         size_t count = {1};
         ///////////////////////////////////first output/////////////////////////

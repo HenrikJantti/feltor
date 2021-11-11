@@ -40,6 +40,10 @@ struct Parameters
 
     std::string init, equations, output, timestepper, source_rel, source_type, bgproftype;
 
+    unsigned save_probes;
+    unsigned probe_number;
+    std::vector<std::array<unsigned, 2>> probes;
+
     Parameters( const dg::file::WrappedJsonValue& ws ) {
         n  = ws["grid"].get("n", 5).asUInt();
         Nx = ws["grid"].get("Nx", 64).asUInt();
@@ -104,6 +108,31 @@ struct Parameters
         posY = ws["init"].get("posY", 0.5).asDouble();    
         xfac_d = ws["init"].get("xfac_d", 0.05).asDouble();
         sigma_d = ws["init"].get("sigma_d", 2.0).asDouble();
+
+        //Adding Probes
+        auto prb = ws["probe"];
+        save_probes = prb.get("save_probes",false).asUInt();
+        probe_number = prb.get("probe_nbr",0).asUInt();
+        if(save_probes)
+            for( unsigned i=0; i<probe_number; i++)
+            {   
+                for(unsigned j = 0; i<2; j++){
+                    probes[i][j] = prb["probes"][i][j].asUInt();
+                }
+            }
+
+
+
+        // if(save_probes == "yes"){
+        //     try{
+        //         for(auto probe :  prb["probes"])
+        //             probes.push_back({probe[0].asUInt(),probe[1].asUInt()})
+        //     }
+        //     catch(...){
+		//         probes.push_back({ws["probe"].get("probes")[0].asUInt(), ws["probe"].get("probes")[1].asUInt()});
+	
+
+        // }}
 
         nu = ws["nu_perp"].asDouble();
         bc_x = dg::str2bc(ws["bc_x"].asString());
