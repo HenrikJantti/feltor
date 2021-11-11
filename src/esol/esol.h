@@ -167,12 +167,18 @@ Esol< Geometry, M,  container>::Esol( const Geometry& grid, const Parameters& p 
     m_p(p)
 {
     if(p.source_type == "flux") {
-        m_source = dg::evaluate( dg::CauchyX( p.xfac_s*p.lx, p.sigma_s, p.omega_s)  , grid);
-//         m_source = dg::evaluate( dg::GaussianX( p.xfac_s*p.lx, p.sigma_s, p.omega_s)  , grid);
+        if (p.source_shape == "cauchy"){
+            m_source = dg::evaluate( dg::CauchyX( p.xfac_s*p.lx, p.sigma_s, p.omega_s)  , grid);
+        }
+        else if (p.source_shape == "gaussian"){
+            m_source = dg::evaluate( dg::GaussianX( p.xfac_s*p.lx, p.sigma_s, p.omega_s)  , grid);
+        }
     }
     else if (p.source_type == "forced") {
         m_source = dg::evaluate(dg::PolynomialHeaviside(p.lx*p.xfac_sep, p.sigma_sep, -1), grid);
     }
+    
+
     m_psi[0] = m_psi[1] = m_N[0] = m_N[1]  = m_gradn[0] = m_gradn[1] = m_gradphi[0] = m_gradphi[1]= m_chi; 
     m_multi_chi= m_multigrid.project( m_chi);
     m_multi_iota= m_multigrid.project( m_chi);
@@ -353,7 +359,8 @@ void Esol<G,  M,  container>::operator()( double t, const std::array<container,2
     //sheath dissipation
     dg::blas1::axpby(-1.,m_psi[0], 0., m_omega, m_omega);      //omega = - phi
     dg::blas1::transform(m_omega, m_omega, dg::EXP<double>()); //omega = exp(-phi) 
-    dg::blas1::pointwiseDot(-m_p.lambda/sqrt(2.*M_PI*fabs(m_p.mu[0])),m_rh, m_omega, m_N[0], 1.0,yp[0]); 
+    if (m_p.renormalize == false) dg::blas1::pointwiseDot(-m_p.lambda/sqrt(2.*M_PI*fabs(m_p.mu[0])),m_rh, m_omega, m_N[0], 1.0,yp[0]); 
+    else dg::blas1::pointwiseDot(-m_p.lambda*sqrt(1.+m_p.tau[1]),m_rh, m_omega, m_N[0], 1.0,yp[0]); 
     
     dg::blas1::pointwiseDot(m_N[0], m_rh, m_iota); 
     dg::blas1::axpby(-sqrt(1.+m_p.tau[1])*m_p.lambda, m_iota, 1.0, yp[1]);        
@@ -361,7 +368,7 @@ void Esol<G,  M,  container>::operator()( double t, const std::array<container,2
     dg::blas2::symv( m_lapMperpN, m_iota, m_omega); //-nabla_perp^2 rh*(ne-bgprofamp-profamp)
     dg::blas1::axpby(-sqrt(1.+m_p.tau[1])*m_p.lambda*0.5*m_p.tau[1]*m_p.mu[1], m_omega, 1.0, yp[1]);
     
-    //source
+    //density source
     if (m_p.source_type == "flux")
     {
         dg::blas1::axpby( m_p.omega_s, m_source, 1.0, yp[1]);
@@ -377,6 +384,11 @@ void Esol<G,  M,  container>::operator()( double t, const std::array<container,2
         solveSne(t, m_chi, m_psi[0], y[0], m_omega);
     }
     dg::blas1::axpby( m_p.omega_s, m_omega, 1.0, yp[0]);
+ 
+//     //vorticity sink term
+//     dg::blas1::axpbypgz(- m_p.omega_s, y[0], m_p.omega_s, m_gamma_n,  0.0, m_iota);
+//     dg::blas1::pointwiseDot(1.0, m_iota, m_lh, 1.0, yp[0]);
+    
     return;
 }
 
