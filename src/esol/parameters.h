@@ -31,7 +31,7 @@ struct Parameters
     double lambda, alpha;
     double omega_s, xfac_s, sigma_s;
     double omega_n, n_min;
-    double xfac_sep, sigma_sep, xfac_d, sigma_d;
+    double xfac_sep, sigma_sep, xfac_d, sigma_d, xfac_p;
     double bgprofamp, profamp, ln;
     
     double amp, mx, my, sigma, posX, posY;
@@ -39,7 +39,7 @@ struct Parameters
     double lx, ly;
     dg::bc bc_x, bc_y, bc_N_x;
 
-    std::string init, equations, output, timestepper, source_rel, source_type, source_shape, bgproftype, formulation;
+    std::string init, equations, output, timestepper, source_rel, source_type, source_shape, bgproftype, formulation, hwmode;
 
     Parameters( const dg::file::WrappedJsonValue& ws ) {
         n  = ws["grid"].get("n", 5).asUInt();
@@ -79,6 +79,7 @@ struct Parameters
         tau[1] = ws["physical"].get("tau",1.0).asDouble();
         kappa = ws["physical"].get("curvature",0.00015).asDouble();
         alpha = ws["physical"].get("alpha",0.005).asDouble();
+        hwmode = ws["physical"].get("hwmode", "modified").asString(); 
         lambda = ws["physical"].get("lambda",0.000001).asDouble();
         equations = ws["physical"].get("equations", "ff-O2").asString();        
         renormalize = ws["physical"].get("renormalize", "false").asBool(); 
@@ -99,6 +100,7 @@ struct Parameters
         bgproftype = ws["profile"].get("bgproftype", "tanh").asString();
         bgprofamp = ws["profile"].get("bgprofamp", 1.0).asDouble();
         profamp = ws["profile"].get("profamp", 9.0).asDouble();
+        xfac_p = ws["profile"].get("xfac_p", 0.5).asDouble();
         ln = ws["profile"].get("ln", 128.0).asDouble();
         
         init = ws["init"].get("type", "blob").asString();
