@@ -53,6 +53,12 @@ struct Record{
     std::function<void( dg::x::DVec&, Variables&)> function;
 };
 
+struct RecordProbe{
+    std::string name;
+    std::string long_name;
+    std::function<double(Variables&)> function;
+};
+
 std::vector<Record> diagnostics2d_static_list = {
     { "xc", "x-coordinate in Cartesian coordinate system",
         []( dg::x::DVec& result, Variables& v ) {
@@ -207,13 +213,22 @@ std::vector<Record1d> diagnostics1d_list = {
         }
     }
 };
-std::vector<Record> probe_diag_list = {
-    {"electrons_prb", "Electron density messured by probe",
-        []( dg::x::DVec& result, Variables& v ) {
-             dg::blas1::copy(v.f.density(0), result);
+std::vector<RecordProbe> diagnosticsProbe_list = {
+    {"ttest", "TimeTest",
+        []( Variables& v ) {
+            return v.duration;
         }
     },
-
+    {"electrons_prb", "Electron density messured by probe",
+        []( Variables& v ) {
+            return dg::blas1::dot(v.f.volume(), v.f.density(0));
+        }
+    }
+    // {"ions_prb", "Ion gyrocenter density messured by probe",
+    //     [](Variables& v){
+    //         return v.f.density(1);
+    //     }
+    // }
 };
 
 }//namespace esol

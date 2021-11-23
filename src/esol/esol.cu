@@ -117,19 +117,6 @@ int main( int argc, char* argv[])
     }
     DG_RANK0 std::cout << "Done!\n";
 
-    // Create Probe Vectors
-    std::vector<unsigned> probes;
-    std::vector<double>   probesx, probesy;
-    if (p.save_pb){
-        dg::Grid1d gridx( grid.x0(), grid.x1(), grid.n(), grid.Nx());
-        dg::Grid1d gridy( grid.y0(), grid.y1(), grid.n(), grid.Ny());
-        dg::HVec x_axis(dg::create::abscissas(gridx)), y_axis(dg::create::abscissas(gridy));
-        for(unsigned i=0; i<p.probes.size(); i++){
-            probes.push_back(p.probes[i][1] * p.Nx * p.n + p.probes[i][0]);//????
-            probesx.push_back(x_axis[p.probes[i][0]]);
-            probesy.push_back(y_axis[p.probes[i][1]]);
-    }}
-
     /// ////////////Init diagnostics ////////////////////
     esol::Variables var = {esol, p, y0};
     dg::Timer t;
@@ -225,13 +212,17 @@ int main( int argc, char* argv[])
     if( "netcdf" == p.output)
     {
         std::string inputfile = js.toStyledString(); //save input without comments, which is important if netcdf file is later read by another parser
-        std::string outputfile;
-        if( argc==1 || argc == 2 )
+        std::string outputfile, outputfile_probe;
+        if( argc==1 || argc == 2 ){
             outputfile = "esol.nc";
-        else
+            outputfile_probe = "esol_probe.nc";
+        }
+        else{
             outputfile = argv[2];
+            outputfile_probe = argv[2];
+        }
         /// //////////////////////set up netcdf/////////////////////////////////////
-        dg::file::NC_Error_Handle err, err_prb;
+        dg::file::NC_Error_Handle err, err_probe;
         int ncid=-1;
         int ncid_probe;
         try{
@@ -242,12 +233,7 @@ int main( int argc, char* argv[])
             std::cerr << e.what()<<std::endl;
            return -1;
         }
-        // set up netcdf for probes
-        std::string nc_probe_file = argv[2];
-        nc_probe_file = nc_probe_file.insert(nc_probe_file.size() - 3, "_prbs" );
-        if(p.save_probes){
-            DG_RANK0 err_prb = nc_create( nc_probe_file.c_str(),NC_NETCDF4|NC_CLOBBER, &ncid_probe);
-        }
+        
 
         /// Set global attributes
         std::map<std::string, std::string> att;
@@ -269,11 +255,9 @@ int main( int argc, char* argv[])
         for( auto pair : att){
             DG_RANK0 err = nc_put_att_text( ncid, NC_GLOBAL,
                 pair.first.data(), pair.second.size(), pair.second.data());  
-            DG_RANK0 err_prb = nc_put_att_text(ncid_probe, NC_GLOBAL, 
-                pair.first.data(),  pair.second.size(), pair.second.data());
         }
-        int dim_ids[3], restart_dim_ids[2], tvarID;
-        std::map<std::string, int> id1d, id3d, restart_ids;
+        int dim_ids[3], probe_dim_ids[3], restart_dim_ids[2], tvarID;
+        std::map<std::string, int> id1d, id3d, restart_ids, idprobe;
         dg::x::CartesianGrid2d grid_out(  0, p.lx, 0, p.ly, p.n_out, p.Nx_out, p.Ny_out, p.bc_x, p.bc_y
             #ifdef WITH_MPI
             , comm
@@ -351,16 +335,40 @@ int main( int argc, char* argv[])
 
         DG_RANK0 err = nc_enddef(ncid);
 
+        // set up netcdf for probes
+        
+
+        if(p.save_probes){
+            try{
+                outputfile_probe = outputfile_probe.insert(outputfile_probe.size() - 3, "_probe" );
+                DG_RANK0 err_probe = nc_create( outputfile_probe.c_str(),NC_NETCDF4|NC_CLOBBER, &ncid_probe);
+            }catch( std::exception& e)
+        {
+            std::cerr << "ERROR creating file "<<outputfile_probe<<std::endl;
+            std::cerr << e.what()<<std::endl;
+           return -1;
+        }
+
+        for( auto pair : att){ 
+            DG_RANK0 err_probe = nc_put_att_text(ncid_probe, NC_GLOBAL, 
+                pair.first.data(),  pair.second.size(), pair.second.data());
+        }
+        
+        
+
+        DG_RANK0 err_probe = dg::file::define_time(ncid_probe, "time", dim_ids, &tvarID);
         //Creating Probe IDs
-        int probeID;
-        int TprbID, TprbvarID;
-        DG_RANK0 err_prb = dg::file::define_dimensions( ncid_probes, dim_ids, &tvarID, grid_out,
-                {"time", "y", "x"});
-        if (p.save_probes){
-                for( auto& record : esol::probe_diag_list){
-                    std::string name = record.name;
-                    std::string long_name = record.long_name;
-                }
+        for(auto& record : esol::diagnosticsProbe_list){
+            std::string name = record.name;
+            std::string long_name = record.long_name;
+            idprobe[name]=0;
+            DG_RANK0 err_probe = nc_def_var( ncid_probe, name.data(), NC_DOUBLE, 1, &dim_ids[0],
+                &idprobe.at(name));
+            DG_RANK0 err = nc_put_att_text( ncid_probe, idprobe.at(name), "long_name", long_name.size(),
+                long_name.data());
+
+        }
+        DG_RANK0 err_probe = nc_enddef(ncid_probe);
         }
 
         size_t start = {0};
@@ -384,6 +392,15 @@ int main( int argc, char* argv[])
         }
         DG_RANK0 err = nc_put_vara_double( ncid, tvarID, &start, &count, &time);
         DG_RANK0 err = nc_close( ncid);
+        //first probe output
+        if(p.save_probes){
+        for(auto& record : esol::diagnosticsProbe_list){
+            double result = record.function(var);
+            DG_RANK0 err_probe = nc_put_vara_double(ncid_probe, idprobe.at(record.name), &start, &count, &result);
+        }
+        DG_RANK0 err_probe = nc_put_vara_double(ncid_probe, tvarID, &start, &count, &time);
+        DG_RANK0 err_probe = nc_close(ncid_probe); 
+        }
         ///////////////////////////////////timeloop/////////////////////////
         for( unsigned i=1; i<=p.maxout; i++)
         {
@@ -440,6 +457,16 @@ int main( int argc, char* argv[])
                 DG_RANK0 err = nc_put_vara_double( ncid, id1d.at(record.name), &start, &count, &result);
             }
             DG_RANK0 err = nc_close( ncid);
+            //probe time
+            DG_RANK0 err_probe = nc_open(outputfile_probe.data(), NC_WRITE, &ncid_probe);
+            DG_RANK0 err_probe = nc_put_vara_double( ncid_probe, tvarID, &start, &count, &time);
+            if(p.save_probes){
+            for(auto& record : esol::diagnosticsProbe_list){
+                double result = record.function(var);
+                DG_RANK0 err_probe = nc_put_vara_double(ncid_probe, idprobe.at(record.name), &start, &count, &result);
+            }
+            DG_RANK0 err_probe = nc_close(ncid_probe);
+            }
             ti.toc();
             DG_RANK0 std::cout << "\n\t Time for output: "<<ti.diff()<<"s\n\n"<<std::flush;
         }

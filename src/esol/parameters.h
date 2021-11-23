@@ -40,7 +40,7 @@ struct Parameters
 
     std::string init, equations, output, timestepper, source_rel, source_type, bgproftype;
 
-    unsigned save_probes;
+    bool save_probes;
     unsigned probe_number;
     std::vector<std::array<unsigned, 2>> probes;
 
@@ -111,16 +111,17 @@ struct Parameters
 
         //Adding Probes
         auto prb = ws["probe"];
-        save_probes = prb.get("save_probes",false).asUInt();
+        save_probes = prb.get("save_probes",false).asBool();
         probe_number = prb.get("probe_nbr",0).asUInt();
-        if(save_probes)
+        probes.resize(probe_number);
+        if(save_probes){
             for( unsigned i=0; i<probe_number; i++)
             {   
-                for(unsigned j = 0; i<2; j++){
+                for(unsigned j = 0; j<2; j++){
                     probes[i][j] = prb["probes"][i][j].asUInt();
                 }
             }
-
+        }
 
 
         // if(save_probes == "yes"){
