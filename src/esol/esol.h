@@ -46,9 +46,15 @@ struct Esol
      */
     void gamma1_y( const container& y, container& yp)
     {
-        std::vector<unsigned> number = m_multigrid.direct_solve( m_multi_g1dag, yp, y, m_p.eps_gamma1);
-        if(  number[0] == m_multigrid.max_iter())
-            throw dg::Fail( m_p.eps_gamma1);
+        if (m_p.tau[1]==0.0) 
+            dg::blas1::copy(y,yp);
+        else
+        {
+            std::vector<unsigned> number = m_multigrid.direct_solve( m_multi_g1dag, yp, y, m_p.eps_gamma1);
+            if(  number[0] == m_multigrid.max_iter())
+                throw dg::Fail( m_p.eps_gamma1);
+        }
+        
     }
     /**
      * @brief compute \f$  \Gamma_1 yp = y \f$ (or \f$ \sqrt{\Gamma_1} yp =  y \f$ )
@@ -57,8 +63,13 @@ struct Esol
      */
     void gamma1inv_y( const container& y, container& yp)
     {
-        dg::blas2::symv( m_multi_g1dag[0], y, m_chi); //invG ne-1
-        dg::blas2::symv( m_v2d, m_chi, yp);
+        if (m_p.tau[1]==0.0) 
+            dg::blas1::copy(y, yp);
+        else
+        {
+            dg::blas2::symv( m_multi_g1dag[0], y, m_chi); //invG ne-1
+            dg::blas2::symv( m_v2d, m_chi, yp);
+        }
     }
     /**
      * @brief Invert \f$ -\nabla \cdot (1/B \nabla_\perp yp) = y \f$ where y equals the ExB vorticity
@@ -89,12 +100,17 @@ struct Esol
         if (m_p.source_rel == "zero-pol" || m_p.source_rel == "finite-pol")
         {
             // Compute Gamma1 SNi
-            m_gamma_SNi_ex.extrapolate(t, m_omega);
-            std::vector<unsigned> number = m_multigrid.direct_solve( m_multi_g1dag, m_omega, SNi, m_p.eps_gamma1);
-            m_gamma_SNi_ex.update(t, m_omega);
-            if(  number[0] == m_multigrid.max_iter())
-                throw dg::Fail( m_p.eps_gamma1);
-            dg::blas1::axpby(1.0, m_omega, 0.0, Sne);
+            if (m_p.tau[1]==0.0)
+                dg::blas1::copy(SNi,Sne);
+            else
+            {
+                m_gamma_SNi_ex.extrapolate(t, m_omega);
+                std::vector<unsigned> number = m_multigrid.direct_solve( m_multi_g1dag, m_omega, SNi, m_p.eps_gamma1);
+                m_gamma_SNi_ex.update(t, m_omega);
+                if(  number[0] == m_multigrid.max_iter())
+                    throw dg::Fail( m_p.eps_gamma1);
+                dg::blas1::axpby(1.0, m_omega, 0.0, Sne);
+            }
         }
         if (m_p.source_rel == "finite-pol")
         {
@@ -126,9 +142,9 @@ struct Esol
     const container& compute_psi( double t, const container& potential);
     const container& polarisation( double t, const std::array<container,2>& y);
 
-    container m_chi, m_omega, m_iota, m_gamma_n, m_psi1, m_psi2, m_rho_m1, m_phi_m1, m_gamma0sqrtinv_rho_m1, m_gamma0sqrt_phi_m1,  m_logn, m_rh, m_lh, m_source, m_prof;
+    container m_chi, m_omega, m_iota, m_gamma_n, m_psi1, m_psi2, m_rho_m1, m_phi_m1, m_gamma0sqrtinv_rho_m1, m_gamma0sqrt_phi_m1,  m_logn, m_hp, m_hm, m_source, m_prof;
     const container m_binv; //magnetic field
-    std::array<container,2> m_psi, m_N, m_gradn, m_gradphi;
+    std::array<container,2> m_psi, m_N, m_dN, m_gradn, m_gradphi;
     
     //matrices and solvers
     dg::Elliptic<Geometry, Matrix, container>  m_lapMperp, m_lapMperpN; 
@@ -161,19 +177,25 @@ Esol< Geometry, M,  container>::Esol( const Geometry& grid, const Parameters& p 
     m_multigrid( grid, 3),
     m_phi_ex( 2, m_chi),  m_psi1_ex(2, m_chi),  m_gamma_n_ex( 2, m_chi), m_gamma0sqrt_phi_ex( 2, m_chi), m_rho_ex(2, m_chi), m_gamma0sqrtinv_rho_ex(2, m_chi), m_gamma_SNi_ex(2, m_chi),
     m_volume( dg::create::volume(grid)), m_v2d( dg::create::inv_weights(grid)), m_one( dg::evaluate(dg::one, grid)),
-    m_lh( dg::evaluate(dg::PolynomialHeaviside(p.lx*p.xfac_sep, p.sigma_sep, -1), grid)),
-    m_rh( dg::evaluate(dg::PolynomialHeaviside(p.lx*p.xfac_sep, p.sigma_sep, 1), grid)),
-    m_polavg(grid, dg::coo2d::y),
+    m_hm( dg::evaluate(dg::PolynomialHeaviside(p.lx*p.xfac_sep, p.sigma_sep, -1), grid)),
+    m_hp( dg::evaluate(dg::PolynomialHeaviside(p.lx*p.xfac_sep, p.sigma_sep, 1), grid)),
+    m_polavg(grid, dg::coo2d::y,"simple"),
     m_p(p)
 {
     if(p.source_type == "flux") {
-        m_source = dg::evaluate( dg::CauchyX( p.xfac_s*p.lx, p.sigma_s, p.omega_s)  , grid);
-//         m_source = dg::evaluate( dg::GaussianX( p.xfac_s*p.lx, p.sigma_s, p.omega_s)  , grid);
+        if (p.source_shape == "cauchy"){
+            m_source = dg::evaluate( dg::CauchyX( p.xfac_s*p.lx, p.sigma_s, p.omega_s)  , grid);
+        }
+        else if (p.source_shape == "gaussian"){
+            m_source = dg::evaluate( dg::GaussianX( p.xfac_s*p.lx, p.sigma_s, p.omega_s)  , grid);
+        }
     }
     else if (p.source_type == "forced") {
         m_source = dg::evaluate(dg::PolynomialHeaviside(p.lx*p.xfac_sep, p.sigma_sep, -1), grid);
     }
-    m_psi[0] = m_psi[1] = m_N[0] = m_N[1]  = m_gradn[0] = m_gradn[1] = m_gradphi[0] = m_gradphi[1]= m_chi; 
+    
+
+    m_psi[0] = m_psi[1] = m_dN[0] = m_dN[1] = m_N[0] = m_N[1]  = m_gradn[0] = m_gradn[1] = m_gradphi[0] = m_gradphi[1]= m_chi; 
     m_multi_chi= m_multigrid.project( m_chi);
     m_multi_iota= m_multigrid.project( m_chi);
     m_multi_elliptic.resize(3);
@@ -194,7 +216,7 @@ Esol< Geometry, M,  container>::Esol( const Geometry& grid, const Parameters& p 
     m_sqrtsolve.construct( m_multi_g0[0], grid, m_chi,  p.eps_cauchy, p.maxiter_sqrt, p.maxiter_cauchy,  p.eps_gamma0);
     
     if(p.bgproftype == "tanh"){
-           m_prof = dg::evaluate( dg::TanhProfX(p.lx*p.xfac_sep, p.ln,-1.0, p.bgprofamp,p.profamp), grid);
+           m_prof = dg::evaluate( dg::TanhProfX(p.lx*p.xfac_p, p.ln,-1.0, p.bgprofamp,p.profamp), grid);
     }
     else if(p.bgproftype == "exp"){
            m_prof = dg::evaluate( dg::ExpProfX(p.profamp, p.bgprofamp, p.ln), grid);
@@ -205,8 +227,8 @@ template< class G,  class M, class container>
 const container& Esol<G,  M,  container>::compute_psi( double t, const container& potential)
 {
 
-    if (m_p.tau[1] == 0.) {
-        dg::blas1::axpby( 1., potential, 0., m_psi1); 
+    if (m_p.tau[1] == 0.0) {
+        dg::blas1::copy( potential, m_psi1); 
     }
     else {
         m_psi1_ex.extrapolate( t, m_psi1);
@@ -250,12 +272,18 @@ const container& Esol<G,  M, container>::polarisation( double t, const std::arra
     }
     
     //Compute rho
-    m_gamma_n_ex.extrapolate(t, m_gamma_n);
-    std::vector<unsigned> number = m_multigrid.direct_solve( m_multi_g1dag, m_gamma_n, y[1], m_p.eps_gamma1);
-    m_gamma_n_ex.update(t, m_gamma_n);
-    if(  number[0] == m_multigrid.max_iter())
-        throw dg::Fail( m_p.eps_gamma1);
-    
+    if (m_p.tau[1]==0.0)
+    {
+        dg::blas1::copy(y[1],m_gamma_n);
+    }
+    else
+    {
+        m_gamma_n_ex.extrapolate(t, m_gamma_n);
+        std::vector<unsigned> number = m_multigrid.direct_solve( m_multi_g1dag, m_gamma_n, y[1], m_p.eps_gamma1);
+        m_gamma_n_ex.update(t, m_gamma_n);
+        if(  number[0] == m_multigrid.max_iter())
+            throw dg::Fail( m_p.eps_gamma1);
+    }
  //"ff-lwl" || "ff-lwl-OB" || "ff-O2-OB" ||  "ff-O2"
     dg::blas1::axpby( 1., m_gamma_n, -1., y[0], m_omega); 
     if (m_p.equations == "ff-O2-OB") {            
@@ -302,81 +330,226 @@ const container& Esol<G,  M, container>::polarisation( double t, const std::arra
 template< class G,  class M,  class container>
 void Esol<G,  M,  container>::operator()( double t, const std::array<container,2>& y, std::array<container,2>& yp)
 {
-    //y[0] = N_e - 1 or delta N_e
-    //y[1] = N_i - 1 or delta N_i
-    assert( y.size() == 2);
-    assert( y.size() == yp.size());
-
-    m_psi[0] = polarisation( t, y);
-    m_psi[1] = compute_psi( t, m_psi[0]);
-
-
-    for( unsigned i=0; i<y.size(); i++) 
+    if (m_p.formulation == "conservative")
     {
-        dg::blas1::transform( y[i], m_N[i], dg::PLUS<double>(m_p.bgprofamp + m_p.profamp) );
+        //y[0] = N_e - (m_p.bgprofamp + m_p.profamp)
+        //y[1] = N_i - (m_p.bgprofamp + m_p.profamp)
+        assert( y.size() == 2);
+        assert( y.size() == yp.size());
 
-        //ExB drift  - v_y dy n - v_x dx n
-        dg::blas2::symv( -1., m_centered[1], m_psi[i], 0., m_chi); //v_x
-        dg::blas2::symv(  1., m_centered[0], m_psi[i], 0., m_iota); //v_y
-        if (i==0)
+        m_psi[0] = polarisation( t, y);
+        m_psi[1] = compute_psi( t, m_psi[0]);
+
+        for( unsigned i=0; i<y.size(); i++) 
         {
-            dg::blas1::copy(m_iota, m_gradphi[0]);
-            dg::blas1::copy(m_chi, m_gradphi[1]);
-            dg::blas1::scal(m_gradphi[1], -1.0);
+            dg::blas1::transform( y[i], m_N[i], dg::PLUS<double>(m_p.bgprofamp + m_p.profamp) );
+
+            //ExB drift  - v_y dy n - v_x dx n
+            dg::blas2::symv( -1., m_centered[1], m_psi[i], 0., m_chi); //v_x
+            dg::blas2::symv(  1., m_centered[0], m_psi[i], 0., m_iota); //v_y
+            if (i==0)
+            {
+                dg::blas1::copy(m_iota, m_gradphi[0]);
+                dg::blas1::copy(m_chi, m_gradphi[1]);
+                dg::blas1::scal(m_gradphi[1], -1.0);
+            }
+            m_adv.upwind( -1., m_chi, m_iota, y[i], 0., yp[i]);  
+            dg::blas1::pointwiseDot( m_binv, yp[i], yp[i]);
+            
+            //Grad-B drift and ExB compression
+            dg::blas2::symv( m_centered[1], y[i], m_iota);
+            if (i==0)
+            {
+                dg::blas2::symv( m_centeredN, y[i], m_gradn[0]); //dx n
+                dg::blas1::copy(m_iota, m_gradn[1]);
+            }
+            dg::blas2::symv( m_centered[1], m_psi[i], m_omega);
+            dg::blas1::pointwiseDot( m_omega, m_N[i], m_omega);        
+            dg::blas1::axpbypgz( m_p.kappa, m_omega, m_p.tau[i]*m_p.kappa, m_iota, 1., yp[i]);
+
+            //diffusion
+            compute_diff( 1., y[i], 1., yp[i]);            
         }
-        m_adv.upwind( -1., m_chi, m_iota, y[i], 0., yp[i]);   
-        dg::blas1::pointwiseDot( m_binv, yp[i], yp[i]);
         
-        //Grad-B drift and ExB compression
-        dg::blas2::symv( m_centered[1], y[i], m_iota);
-        if (i==0)
+        //adiabaticity term
+        if (m_p.alpha != 0.0)
         {
-            dg::blas2::symv( m_centeredN, y[i], m_gradn[0]); //dx n
-            dg::blas1::copy(m_iota, m_gradn[1]);
-        }
-        dg::blas2::symv( m_centered[1], m_psi[i], m_omega);
-        dg::blas1::pointwiseDot( m_omega, m_N[i], m_omega);        
-        dg::blas1::axpbypgz( m_p.kappa, m_omega, m_p.tau[i]*m_p.kappa, m_iota, 1., yp[i]);
+            if (m_p.hwmode == "modified")
+            {
+                dg::blas1::transform( m_N[0], m_logn, dg::LN<double>());
+                m_polavg(m_logn, m_iota);       //<ln(ne)> 
+                m_polavg(m_psi[0], m_chi);        //<phi>
+                dg::blas1::axpby(1., m_psi[0],  -1., m_chi, m_chi);       // delta(phi) 
+                dg::blas1::axpbypgz(1., m_chi, -1., m_logn, 1.0, m_iota); // delta(phi)  - delta(ln(ne))
+            }
+            else if (m_p.hwmode == "ordinary")
+            {
+                m_polavg(m_N[0], m_iota);       //<ln(ne)> 
+                dg::blas1::pointwiseDivide(m_N[0], m_iota, m_iota);
+                dg::blas1::transform( m_iota, m_chi, dg::LN<double>());
+                dg::blas1::axpby(1., m_psi[0], -1., m_chi, m_iota); // phi  - ln(ne/<ne>)
+            }
+            else if (m_p.hwmode == "ordinary_nonper")
+            {
+                dg::blas1::transform( m_N[0], m_chi, dg::LN<double>());
+                dg::blas1::axpby(1., m_psi[0], -1., m_chi, m_iota); // phi  - ln(ne)
+            }
+            dg::blas1::pointwiseDot(m_p.alpha, m_iota, m_hm, 1.0,yp[0]);
 
-        //diffusion
-        compute_diff( 1., y[i], 1., yp[i]);            
+        }
+        
+        //sheath dissipation
+        if (m_p.lambda !=0.0)
+        {
+            dg::blas1::axpby(-1.,m_psi[0], 0., m_omega, m_omega);      //omega = - phi
+            dg::blas1::transform(m_omega, m_omega, dg::EXP<double>()); //omega = exp(-phi) 
+            if (m_p.renormalize == false) dg::blas1::pointwiseDot(-m_p.lambda/sqrt(2.*M_PI*fabs(m_p.mu[0])),m_hp, m_omega, m_N[0], 1.0,yp[0]); 
+            else dg::blas1::pointwiseDot(-m_p.lambda*sqrt(1.+m_p.tau[1]),m_hp, m_omega, m_N[0], 1.0,yp[0]); 
+        
+            dg::blas1::pointwiseDot(m_N[0], m_hp, m_iota); 
+            dg::blas1::axpby(-sqrt(1.+m_p.tau[1])*m_p.lambda, m_iota, 1.0, yp[1]);        
+            dg::blas1::pointwiseDot( y[0], m_hp, m_iota); //hp*(ne-bgprofamp-profamp)
+            dg::blas2::symv( m_lapMperpN, m_iota, m_omega); //-nabla_perp^2 hp*(ne-bgprofamp-profamp)
+            dg::blas1::axpby(-sqrt(1.+m_p.tau[1])*m_p.lambda*0.5*m_p.tau[1]*m_p.mu[1], m_omega, 1.0, yp[1]);
+        }
+        
+        //density source
+        if (m_p.omega_s != 0.0)
+        {
+            if (m_p.source_type == "flux")
+            {
+                dg::blas1::axpby( m_p.omega_s, m_source, 1.0, yp[1]);
+                solveSne(t, m_source, m_psi[0], y[0], m_omega);
+            }
+            else if (m_p.source_type == "forced")
+            {
+                m_polavg(m_N[1], m_iota);       //<ln(Ni)> 
+                dg::blas1::axpby(1.0, m_prof, -1.0, m_iota, m_iota); //n_prof - <Ni>
+                dg::blas1::pointwiseDot(m_iota, m_source, m_omega); //(n_prof - <Ni>)
+                dg::blas1::transform(m_omega, m_chi, dg::POSVALUE<double>()); //take only >=0 value
+                dg::blas1::axpby(m_p.omega_s, m_chi, 1.0, yp[1]); 
+                solveSne(t, m_chi, m_psi[0], y[0], m_omega);
+            }
+            dg::blas1::axpby( m_p.omega_s, m_omega, 1.0, yp[0]);
+        }
+        
+        if (m_p.omega_n !=0.0)
+        {
+            dg::blas1::axpby(1.0, m_p.n_min, -1.0, m_N[1], m_omega); // n_min - n
+            dg::blas1::transform(m_omega, m_chi, dg::POSVALUE<double>()); //take only >=0 value: chi= (n_min- n) Theta(n_min -n)
+            dg::blas1::axpby(m_p.omega_n, m_chi, 1.0, yp[1]); 
+            solveSne(t, m_chi, m_psi[0], y[0], m_omega);        
+            dg::blas1::axpby( m_p.omega_n, m_omega, 1.0, yp[0]);
+        }
     }
-    
-    //adiabaticity term
-    dg::blas1::transform( m_N[0], m_logn, dg::LN<double>());
-    m_polavg(m_logn, m_iota);       //<ln(ne)> 
-    m_polavg(m_psi[0], m_chi);        //<phi>
-    dg::blas1::axpby(1., m_psi[0],  -1., m_chi, m_chi);       // delta(phi) 
-    dg::blas1::axpbypgz(1., m_chi, -1., m_logn, 1.0, m_iota); // delta(phi)  - delta(ln(ne))
-    dg::blas1::pointwiseDot(m_p.alpha, m_iota, m_lh, 1.0,yp[0]);
-    
-    //sheath dissipation
-    dg::blas1::axpby(-1.,m_psi[0], 0., m_omega, m_omega);      //omega = - phi
-    dg::blas1::transform(m_omega, m_omega, dg::EXP<double>()); //omega = exp(-phi) 
-    dg::blas1::pointwiseDot(-m_p.lambda/sqrt(2.*M_PI*fabs(m_p.mu[0])),m_rh, m_omega, m_N[0], 1.0,yp[0]); 
-    
-    dg::blas1::pointwiseDot(m_N[0], m_rh, m_iota); 
-    dg::blas1::axpby(-sqrt(1.+m_p.tau[1])*m_p.lambda, m_iota, 1.0, yp[1]);        
-    dg::blas1::pointwiseDot( y[0], m_rh, m_iota); //rh*(ne-bgprofamp-profamp)
-    dg::blas2::symv( m_lapMperpN, m_iota, m_omega); //-nabla_perp^2 rh*(ne-bgprofamp-profamp)
-    dg::blas1::axpby(-sqrt(1.+m_p.tau[1])*m_p.lambda*0.5*m_p.tau[1]*m_p.mu[1], m_omega, 1.0, yp[1]);
-    
-    //source
-    if (m_p.source_type == "flux")
+
+    else if (m_p.formulation == "ln")
     {
-        dg::blas1::axpby( m_p.omega_s, m_source, 1.0, yp[1]);
-        solveSne(t, m_source, m_psi[0], y[0], m_omega);
+        //y[0] = ln (n/(m_p.bgprofamp + m_p.profamp) )
+        //y[1] = ln (N/(m_p.bgprofamp + m_p.profamp) ))
+        assert( y.size() == 2);
+        assert( y.size() == yp.size());
+        for( unsigned i=0; i<y.size(); i++) 
+        {
+            dg::blas1::transform( y[i], m_N[i], dg::EXP<double>() );
+            dg::blas1::scal(m_N[i], m_p.bgprofamp + m_p.profamp);
+            dg::blas1::axpby(1.0, m_N[i], -1.0, m_p.bgprofamp + m_p.profamp, m_dN[i]);
+        }    
+        m_psi[0] = polarisation( t, m_dN);
+        m_psi[1] = compute_psi( t, m_psi[0]);
+        
+        for( unsigned i=0; i<y.size(); i++) 
+        {
+            //ExB drift  - v_y dy ln n - v_x dx ln n
+            dg::blas2::symv( -1., m_centered[1], m_psi[i], 0., m_chi); // v_x = -d_y psi
+            dg::blas2::symv(  1., m_centered[0], m_psi[i], 0., m_iota); //v_y = d_x psi
+            if (i==0)
+            {
+                dg::blas1::copy(m_iota, m_gradphi[0]); //gradphi[0] = d_x phi
+                dg::blas1::copy(m_chi, m_gradphi[1]);  //gradphi[1] = -d_y phi
+                dg::blas1::scal(m_gradphi[1], -1.0);   //gradphi[1] = d_y phi
+            }
+            m_adv.upwind( -1., m_chi, m_iota, y[i], 0., yp[i]);   // dt ln n = - v_y dy ln n - v_x dx ln n
+            dg::blas1::pointwiseDot( m_binv, yp[i], yp[i]);       // dt ln n = (- v_y dy ln n - v_x dx ln n)/B
+            
+        //Grad-B drift and ExB compression
+            dg::blas2::symv( m_centered[1], y[i], m_iota);   //iota = dy ln n
+            if (i==0)
+            {
+                dg::blas2::symv( m_centeredN, y[i], m_gradn[0]); //gradn[0] = dx ln n_e
+                dg::blas1::copy(m_iota, m_gradn[1]);             //gradn[1] = dy ln n_e
+            }
+            dg::blas2::symv( m_centered[1], m_psi[i], m_omega);  //omega = dy psi
+            dg::blas1::axpbypgz( m_p.kappa, m_omega, m_p.tau[i]*m_p.kappa, m_iota, 1., yp[i]); // dt ln n += kappa dy psi + kappa*tau dy ln n
+
+            //diffusion
+            compute_diff( 1., m_dN[i], 0.0, m_omega);
+            dg::blas1::pointwiseDivide(  m_omega, m_N[i], m_omega);
+            dg::blas1::axpby(1.0, m_omega, 1.0, yp[i]); // dt ln n += - 1/n nu lap^2 n
+        }
+    
+        //adiabaticity term
+        if (m_p.alpha != 0.0)
+        {
+            if (m_p.hwmode == "modified")
+            {
+                m_polavg(y[0], m_iota);       //<ln(ne/a)> 
+                m_polavg(m_psi[0], m_chi);        //<phi>
+                dg::blas1::axpby(1., m_psi[0],  -1., m_chi, m_chi);       // tilde(phi) 
+                dg::blas1::axpbypgz(1., m_chi, -1., y[0], 1.0, m_iota); // tilde(phi)  - tilde(ln(ne))
+            }
+            else if (m_p.hwmode == "ordinary")
+            {
+                m_polavg(m_N[0], m_iota);       //<ln(ne)> 
+                dg::blas1::pointwiseDivide(m_N[0], m_iota, m_iota);
+                dg::blas1::transform( m_iota, m_chi, dg::LN<double>());
+                dg::blas1::axpby(1., m_psi[0], -1., m_chi, m_iota); // phi  - ln(ne/<ne>)
+            }
+            else if (m_p.hwmode == "ordinary_nonper")
+            {
+                dg::blas1::transform( m_N[0], m_chi, dg::LN<double>());
+                dg::blas1::axpby(1., m_psi[0], -1., m_chi, m_iota); // phi  - ln(ne/<ne>)
+            }
+            dg::blas1::pointwiseDivide(m_iota,  m_N[0], m_iota);
+            dg::blas1::pointwiseDot(m_p.alpha, m_iota, m_hm, 1.0,yp[0]);
+        }
+        
+        //sheath dissipation
+        if (m_p.lambda !=0.0)
+        {
+            dg::blas1::axpby(-1., m_psi[0], 0., m_omega, m_omega);      //omega = - phi
+            dg::blas1::transform(m_omega, m_omega, dg::EXP<double>()); //omega = exp(-phi) 
+            if (m_p.renormalize == false) dg::blas1::pointwiseDot(-m_p.lambda/sqrt(2.*M_PI*fabs(m_p.mu[0])), m_hp, m_omega, 0.0, m_omega); 
+            else dg::blas1::pointwiseDot(-m_p.lambda*sqrt(1.+m_p.tau[1]), m_hp, m_omega,  1.0, yp[0]);  // dt ln(ne) += -lambda hp sqrt(1+tau) e^(-phi)            
+            
+            dg::blas1::pointwiseDot(m_N[0], m_hp, m_iota); 
+            dg::blas1::pointwiseDivide(-sqrt(1.+m_p.tau[1])*m_p.lambda, m_iota, m_N[1], 1.0, yp[1]); // dt ln Ni += -lambda ne hp/Ni sqrt(1+tau) 
+            dg::blas1::pointwiseDot(m_dN[0], m_hp, m_iota); //hp*(ne-bgprofamp-profamp)
+            dg::blas2::symv( m_lapMperpN, m_iota, m_omega); //-nabla_perp^2 hp*(ne-bgprofamp-profamp)            
+            dg::blas1::pointwiseDivide(-sqrt(1.+m_p.tau[1])*m_p.lambda*0.5*m_p.tau[1]*m_p.mu[1], m_omega, m_N[1], 1.0, yp[1]);
+        }
+        
+        //density source
+        if (m_p.omega_s != 0.0)
+        {
+            if (m_p.source_type == "flux")
+            {
+                dg::blas1::pointwiseDivide( m_p.omega_s, m_source, m_N[1], 1.0, yp[1]);
+                solveSne(t, m_source, m_psi[0], m_dN[0], m_omega);
+            }
+            else if (m_p.source_type == "forced")
+            {
+                m_polavg(m_N[1], m_iota);       //<ln(Ni)> 
+                dg::blas1::axpby(1.0, m_prof, -1.0, m_iota, m_iota); //n_prof - <Ni>
+                dg::blas1::pointwiseDot(m_iota, m_source, m_omega); //(n_prof - <Ni>)
+                dg::blas1::transform(m_omega, m_chi, dg::POSVALUE<double>()); //take only >=0 value
+                dg::blas1::pointwiseDivide(m_p.omega_s, m_chi, m_N[1], 1.0, yp[1]); 
+                solveSne(t, m_chi, m_psi[0], m_dN[0], m_omega);
+            }
+            dg::blas1::pointwiseDivide( m_p.omega_s, m_omega, m_N[0], 1.0, yp[0]);
+        }
     }
-    else if (m_p.source_type == "forced")
-    {
-        m_polavg(m_N[1], m_iota);       //<ln(Ni)> 
-        dg::blas1::axpby(1.0, m_prof, -1.0, m_iota, m_iota); //n_prof - <Ni>
-        dg::blas1::pointwiseDot(m_iota, m_source, m_omega); //(n_prof - <Ni>)
-        dg::blas1::transform(m_omega, m_chi, dg::POSVALUE<double>()); //take only >=0 value
-        dg::blas1::axpby(m_p.omega_s, m_chi, 1.0, yp[1]); 
-        solveSne(t, m_chi, m_psi[0], y[0], m_omega);
-    }
-    dg::blas1::axpby( m_p.omega_s, m_omega, 1.0, yp[0]);
+    
     return;
 }
 

@@ -106,7 +106,7 @@ The complete parallel closure consists then of two contributions:
 \Lambda_{N,\parallel,b}
 \end{align}
 
-\paragraph{Edge:} In the edge region we take the modified Hasegawa-Waktani 
+\paragraph{Edge:} In the edge region we take the modified Hasegawa-Waktani ("modified")
 closure~\cite{Held2018}
 \begin{align}
  \Lambda_{n,\parallel,-} &= \alpha h_{-}(x) \left[\widetilde{\phi} - 
@@ -117,7 +117,19 @@ with the fluctuation given by \(\widetilde{f} := f - \langle f\rangle_y\) and
 the y-average \(\langle f\rangle_y:= \int dy f / L_y\). The adiabaticity 
 parameter is defined as \(\alpha := T_{e,\parallel} 
 k_\parallel^2/(\eta_\parallel e^2 n_{e,0} \Omega_{i,0} )\).
-
+\\
+Alternatively, the ordinary Hasegawa-Wakatani ("ordinary") closure is given by~\cite{Held2018}
+\begin{align}
+ \Lambda_{n,\parallel,-} &= \alpha h_{-}(x) \left[\phi - 
+\ln(n/\langle n\rangle) \right] \\
+ \Lambda_{N,\parallel,-} &= 0
+\end{align}
+The third option is to normalize the logarithmic term to a constant reference density ("ordinary_nonper")
+\begin{align}
+ \Lambda_{n,\parallel,-} &= \alpha h_{-}(x) \left[\phi - 
+\ln(n/n_0) \right] \\
+ \Lambda_{N,\parallel,-} &= 0
+\end{align}
 \paragraph{Scrape-off-Layer:} In the scrape off layer we assume Bohm sheath 
 boundary conditions~\cite{Mosetto2015}~\footnote{Note that strictly speaking the 
 boundary conditions for the density and electric potential are Neumann, in 
@@ -145,6 +157,20 @@ Note that this results into the following term in the vorticity density equation
 \Lambda_{n,\parallel,+} = -\lambda  h_{+}(x)  n \sqrt{1 + \tau} \left[1  -  
 \frac{1}{\sqrt{1 + \tau}}\exp{(\Lambda_{sh} - \phi)} \right]
 \end{align}
+In order to circumvent \ExB shear flows on the boundaries when we choose Dirichlet boundary conditions we can renormalize our potential. We choose
+\begin{align}
+ \phi' := \phi - \Lambda_{sh}+ \ln{\sqrt{1+\tau}}
+\end{align}
+and substitute into the relevant closure term
+\begin{align}
+ \Lambda_{n,\parallel,+} &:= -\sqrt{1 + \tau}h_{+}(x) n \lambda \exp{(- \phi')} 
+\end{align}
+to obtain
+\begin{align}
+ \Lambda_{\mathcal{W},\parallel,+} :=  -\lambda  h_{+}(x)  n \sqrt{1 + \tau} \left[1  -  
+\exp{(-\phi')} \right]
+\end{align}
+which is vanishing for \(\phi'=0\) at the boundaries. Note that the density and vorticity density sink rate increases with \(\tau\)!
 \subsubsection{Sources}
 The particle source is related to the the ion gyro-center source 
 and the electric potential via the transformation rule
@@ -205,7 +231,7 @@ We initialize
 \begin{align}
     N &= \Gamma_1^{-1} n 
 \end{align}
-\subsubsection{Gaussian with zero polarization charge density("blob")}
+\subsubsection{Gaussian with zero polarization charge density("blob\_zeropol")}
 Initialization of $n$ is a Gaussian 
 \begin{align}
     n(x,y,0) &= 1 + A\exp\left( -\frac{(x-X)^2 + (y-Y)^2}{2\sigma^2}\right) \\
@@ -277,8 +303,8 @@ Input file format: json
 {
     "type": "adaptive", //"adaptive" (explicit adaptive RK) or "multistep" (explicit multistep)
     "tableau": "Bogacki-Shampine-4-2-3", // recommended "Bogacki-Shampine-4-2-3" (default adaptive) or "TVB-3-3" (multistep)
-    "rtol": 1e-10, //relative tolerance of adaptive time stepper
-    "atol": 1e-12, //absolute tolerance of adaptive time stepper
+    "rtol": 1e-5, //relative tolerance of adaptive time stepper
+    "atol": 1e-7, //absolute tolerance of adaptive time stepper
     "dt" : 0.1   //time step in units of $c_s/\rho_s$ for multistep. Also determines together with itstep output step $dt_{out} = dt itstp$
 },
 "output":
@@ -310,37 +336,50 @@ Input file format: json
     "curvature"  : 0.00015, //$\kappa$
     "tau"  : 4.0,           //$\tau_i = T_{i0}/(T_{e0} Z_i)$
     "alpha"  : 0.005,       //adiabaticity $\alpha:= T_{e,\parallel} k_\parallel^2/(\eta_\parallel e^2 n_{e,0} \Omega_{i,0} )$
+    "hwmode" : "modified"   //hasegawa-wakatani model $\in$ ("modified" ,"ordinary" ,"ordinary_nonper" )
     "lambda"  : 0.000001,    //sheath dissipation $\lambda:= \rho_{s0}/L_\parallel$
     "mu_e"  : -0.000272121, //$\mu_e:=m_e/(Z_e m_i)$ negative electron to ion mass ratio
     "equations": "ff-O2",   //model $\in$ ("ff-lwl-OB" ,"ff-O2-OB" ,"ff-lwl" ,"ff-O2" ,"ff-O4" )
+    "renormalize": true,    //Renormalize potential (useful for DIR conditions with finite sheath dissipation)
     "xfac_sep"  : 0.3,      //$f_s$ x-position of separatrix in units of $l_x$     
-    "sigma_sep"  : 0.5      //$sigma_s$ width of damping function $h_{pm}$ of separatrix in units of $\rho_{s0}$    
+    "sigma_sep"  : 0.5      //$\sigma_s$ width of damping function $h_{pm}$ of separatrix in units of $\rho_{s0}$    
 },
 "source":
 {
+     "source_shape" :"cauchy",  //type of profile $\in$ ("cauchy", "gaussian")
      "source_type" : "flux",    //type of source $\in$ ("forced", "flux")
      "source_rel" : "zero_pol", //relation for source, $\in$ ("zero-pol", "finite-pol")
      "omega_s" : 0.005,         //source rate in units of $\Omega_i$
      "xfac_s": 0.1,             //position of source in units of the $l_x$
-     "sigma_s" : 2.0              //width of source in units of $\rho_{s0}$
+     "sigma_s" : 5.0,           //width of source in units of $\rho_{s0}$
+     "n_min" :1e-3,             //minimum density that is enforced
+     "omega_n": 1e8             //forcing rate for minimum density 
 },
 "profile":
 {
+     "bgproftype": "exp",  //type of background profile $\in$ ("exp","tanh")
      "bgprofamp" : 1.0, //amplitude of background in units of $n_{e0}$, typically 1
      "profamp": 0.0,    //amplitude of profile in units of $n_{e0}$
-     "sigma_p": 20.0    //width of gradient region of the profile in units of $\rho_{s0}$
+     "ln": 20.0,    //width of gradient region of the profile in units of $\rho_{s0}$
+     "xfac_p": 0.5   //position of tanh profile in units of box size in x-direction
 },
 "init":
 {
     "type"       : "blob",  // Gaussian blob initialization
     "amplitude"  :1.0,      //$A$ of the Gaussian blob
+    "mx": 1.0,              //Wavenumber in x-direction
+    "my":1.0,               //Wavenumber in y-direction
     "sigma"  : 5,           //$\sigma$ of Gaussian blob units of $\rho_s$
     "posX"  : 0.5,          //x initial position $\in (0,1)$
     "posY"  : 0.5           //y initial position $\in (0,1)$
+    "xfac_d": 0.05,         //damping position of initial perturbation at left and right boundaries in x
+    "sigma_d" : 4.0         //damping transition width
 },
 "nu_perp"  : 0e-5,          //hyper-diffusion parameter
-"bc_x"  : "DIR_NEU",        //Boundary condtion in x
-"bc_y"  : "PER"             //Boundary condtion in y
+"bc_x"  : "DIR_NEU",        //Boundary condtion in x for $\phi$ and $\psi$
+"bc_N_x": "NEU",            //Boundary condition in x for the densities
+"bc_y"  : "PER",             //Boundary condtion in y
+"formulation": "conservative"//formulation of the continuity equations $\in ("conservative","ln")$
 \end{minted}
 \subsection{Structure of output file}
 Output file format: netcdf-4/hdf5
