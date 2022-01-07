@@ -12,7 +12,7 @@ namespace esol{
 struct Parameters
 {
     unsigned n, Nx, Ny;
-    double dt;
+    double dt, probe_dt ;
     unsigned n_out, Nx_out, Ny_out;
     unsigned itstp;
     unsigned maxout;
@@ -54,6 +54,7 @@ struct Parameters
      
         timestepper = ws["timestepper"].get("type", "multistep").asString();
         dt = ws["timestepper"].get("dt",0.05).asDouble();
+        probe_dt = ws["timestepper"].get("probe_dt",0.01).asDouble();
 
         output = ws[ "output"]["type"].asString("glfw");    
         n_out  = ws["output"].get("n",5).asUInt();
@@ -130,18 +131,6 @@ struct Parameters
                 }
             }
         }
-
-
-        // if(save_probes == "yes"){
-        //     try{
-        //         for(auto probe :  prb["probes"])
-        //             probes.push_back({probe[0].asUInt(),probe[1].asUInt()})
-        //     }
-        //     catch(...){
-		//         probes.push_back({ws["probe"].get("probes")[0].asUInt(), ws["probe"].get("probes")[1].asUInt()});
-	
-
-        // }}
 
         nu = ws["nu_perp"].asDouble();
         bc_x = dg::str2bc(ws["bc_x"].asString());

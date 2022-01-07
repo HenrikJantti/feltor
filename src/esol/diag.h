@@ -56,7 +56,7 @@ struct Record{
 struct RecordProbe{
     std::string name;
     std::string long_name;
-    std::function<double(Variables&)> function;
+    std::function<void(dg::x::DVec&, Variables&)> function;
 };
 
 std::vector<Record> diagnostics2d_static_list = {
@@ -218,21 +218,27 @@ std::vector<Record1d> diagnostics1d_list = {
     }
 };
 std::vector<RecordProbe> diagnosticsProbe_list = {
-    {"ttest", "TimeTest",
-        []( Variables& v ) {
-            return v.duration;
+    {"electrons_prb", "Electron density messured by probe",
+        []( dg::x::DVec& result, Variables& v ) {
+            dg::blas1::copy(v.f.density(0), result);
+            std::cout<<"PROBES"<<std::endl;
         }
     },
-    {"electrons_prb", "Electron density messured by probe",
-        []( Variables& v ) {
-            return dg::blas1::dot(v.f.volume(), v.f.density(0));
+    {"ions_prb", "Ion gyro center density messured by probe",
+        []( dg::x::DVec& result, Variables& v ) {
+            dg::blas1::copy(v.f.density(1), result);
+        }
+    },
+    {"potential_prb", "Electric potential messured by probe",
+        []( dg::x::DVec& result, Variables& v ) {
+             dg::blas1::copy(v.f.potential(0), result);
+        }
+    },
+    {"vorticity_prb", "ExB vorticity potential messured by probe",
+        []( dg::x::DVec& result, Variables& v ) {
+            v.f.compute_vorticity( 1., v.f.potential(0), 0., result);
         }
     }
-    // {"ions_prb", "Ion gyrocenter density messured by probe",
-    //     [](Variables& v){
-    //         return v.f.density(1);
-    //     }
-    // }
 };
 
 }//namespace esol

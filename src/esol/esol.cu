@@ -90,8 +90,14 @@ int main( int argc, char* argv[])
     dg::Adaptive< dg::ERKStep< std::array<dg::x::DVec,2>>> adapt;
     double rtol = 0., atol = 0., dt = 0.;
     unsigned step = 0;
+    unsigned probe_step = 0;
+    //probe time
+    double probe_dt_out = p.probe_dt*p.itstp;
+    double probe_t_out = time + probe_dt_out; 
+    //field time
     double dt_out = p.dt*p.itstp;
     double t_out = time + dt_out;
+    
     if( p.timestepper == "multistep")
     {
         std::string tableau = ws[ "timestepper"]["tableau"].asString("TVB-3-3");
@@ -256,7 +262,7 @@ int main( int argc, char* argv[])
             DG_RANK0 err = nc_put_att_text( ncid, NC_GLOBAL,
                 pair.first.data(), pair.second.size(), pair.second.data());  
         }
-        int dim_ids[3], probe_dim_ids[3], restart_dim_ids[2], tvarID;
+        int dim_ids[3], probe_dim_ids[2], restart_dim_ids[2], tvarID, probe_tvarID;
         std::map<std::string, int> id1d, id3d, restart_ids, idprobe;
         dg::x::CartesianGrid2d grid_out(  0, p.lx, 0, p.ly, p.n_out, p.Nx_out, p.Ny_out, p.bc_x, p.bc_y
             #ifdef WITH_MPI
@@ -333,46 +339,62 @@ int main( int argc, char* argv[])
         }
         
 
-        DG_RANK0 err = nc_enddef(ncid);
 
         // set up netcdf for probes
-        
+        // Probe implementation addapted from Carlos Rodriguez Molinuevo https://github.com/PPFE-Turbulence/Feltor_2D_Master_Thesis
 
+        std::vector<unsigned> probepos;
+        std::vector<double> probesx, probesy;
+
+        int probeID, probevarID, probevarxID, probevaryID;
         if(p.save_probes){
-            try{
-                outputfile_probe = outputfile_probe.insert(outputfile_probe.size() - 3, "_probe" );
-                DG_RANK0 err_probe = nc_create( outputfile_probe.c_str(),NC_NETCDF4|NC_CLOBBER, &ncid_probe);
-            }catch( std::exception& e)
-        {
-            std::cerr << "ERROR creating file "<<outputfile_probe<<std::endl;
-            std::cerr << e.what()<<std::endl;
-           return -1;
-        }
-
-        for( auto pair : att){ 
-            DG_RANK0 err_probe = nc_put_att_text(ncid_probe, NC_GLOBAL, 
-                pair.first.data(),  pair.second.size(), pair.second.data());
-        }
+            //Creating grids to save probe positions on
+            dg::Grid1d gridx(grid.x0(), grid.x1(), grid.n(), grid.Nx());
+            dg::Grid1d gridy(grid.y0(), grid.y1(), grid.n(), grid.Ny());
+            dg::HVec x_axis(dg::create::abscissas(gridx)), y_axis(dg::create::abscissas(gridy));
+            for( unsigned i=0; i<p.probes.size(); i++){
+                //this will give us the positions of the probes when evaluating on the grid
+                probepos.push_back(p.probes[i][1]*p.Nx*p.n+p.probes[i][0]);
+                //to know the position of the corresponding probe id
+                probesx.push_back(x_axis[p.probes[i][0]]);
+                probesy.push_back(y_axis[p.probes[i][1]]);
+            } 
+            
         
         
-
-        DG_RANK0 err_probe = dg::file::define_time(ncid_probe, "time", dim_ids, &tvarID);
+        //Creating probe_time to save time independent full fields
+        DG_RANK0 err = dg::file::define_time(ncid, "probe_time", &dim_ids[0], &probe_tvarID);
         //Creating Probe IDs
+
+        
+        //Makes a dimenison probe that saves the x and y coordinate of the corresponding probe
+        DG_RANK0 err = nc_def_dim(ncid, "probes", probepos.size(), &probeID);
+        DG_RANK0 err = nc_def_var(ncid, "probes", NC_UINT, 1, &probeID, &probevarID);
+        DG_RANK0 err = nc_def_var( ncid, "px",  NC_DOUBLE, 1, &probeID, &probevarxID);
+        DG_RANK0 err = nc_def_var( ncid, "py",  NC_DOUBLE, 1, &probeID, &probevaryID);
+
+    
+        int probe_dim_ids[2] = {dim_ids[0],probeID};
         for(auto& record : esol::diagnosticsProbe_list){
             std::string name = record.name;
             std::string long_name = record.long_name;
             idprobe[name]=0;
-            DG_RANK0 err_probe = nc_def_var( ncid_probe, name.data(), NC_DOUBLE, 1, &dim_ids[0],
+            DG_RANK0 err = nc_def_var( ncid, name.data(), NC_DOUBLE, 2, probe_dim_ids,
                 &idprobe.at(name));
-            DG_RANK0 err = nc_put_att_text( ncid_probe, idprobe.at(name), "long_name", long_name.size(),
+            DG_RANK0 err = nc_put_att_text( ncid, idprobe.at(name), "long_name", long_name.size(),
                 long_name.data());
 
         }
-        DG_RANK0 err_probe = nc_enddef(ncid_probe);
+       
         }
+        DG_RANK0 err = nc_enddef(ncid);
+
+        
 
         size_t start = {0};
         size_t count = {1};
+        size_t probe_start[2] = {0, 0};
+        size_t probe_count[2] = {1, probepos.size()};
         ///////////////////////////////////first output/////////////////////////
         for( auto& record : esol::diagnostics2d_list)
         {
@@ -391,40 +413,90 @@ int main( int argc, char* argv[])
             DG_RANK0 err = nc_put_vara_double( ncid, id1d.at(record.name), &start, &count, &result);
         }
         DG_RANK0 err = nc_put_vara_double( ncid, tvarID, &start, &count, &time);
-        DG_RANK0 err = nc_close( ncid);
+        
+        
         //first probe output
+        //////////////////This is can probably be done better/////////////////
+        size_t probes_pos_start[] = {0};
+        size_t probes_pos_count[] = {probepos.size()};
+
+        dg::x::DVec probe_result = volume;
+        dg::x::HVec probe_transferH = dg::evaluate(dg::zero,grid);
+        
         if(p.save_probes){
+        ////saves the values of the probe dimensions
+        err = nc_put_vara_uint(ncid, probevarID, probes_pos_start, probes_pos_count, probepos.data());
+        err = nc_put_vara_double( ncid, probevarxID, probes_pos_start, probes_pos_count, probesx.data());
+        err = nc_put_vara_double( ncid, probevaryID, probes_pos_start, probes_pos_count, probesy.data());
+
+        
+
         for(auto& record : esol::diagnosticsProbe_list){
-            double result = record.function(var);
-            DG_RANK0 err_probe = nc_put_vara_double(ncid_probe, idprobe.at(record.name), &start, &count, &result);
+            std::vector<double> result;
+            record.function(probe_result, var);
+            dg::assign(probe_result, probe_transferH);
+            for(auto probe : probepos){
+                result.push_back(probe_transferH[probe]);
+            }
+            DG_RANK0 err = nc_put_vara_double(ncid, idprobe.at(record.name), probe_start, probe_count, result.data());
         }
-        DG_RANK0 err_probe = nc_put_vara_double(ncid_probe, tvarID, &start, &count, &time);
-        DG_RANK0 err_probe = nc_close(ncid_probe); 
+        
+        DG_RANK0 err = nc_put_vara_double(ncid, probe_tvarID, &probe_start[0], &probe_count[0], &time);
+        DG_RANK0 err = nc_close(ncid); 
         }
         ///////////////////////////////////timeloop/////////////////////////
+        unsigned probe_i = 1;
         for( unsigned i=1; i<=p.maxout; i++)
         {
+    
             dg::Timer ti;
+            dg::Timer probe_ti;
             ti.tic();
             while( time < t_out )
             {
-                if( time+dt > t_out)
-                    dt = t_out-time;
-                try{
-                    if( p.timestepper == "adaptive")
-                        adapt.step( esol, time, y0, time, y0, dt, dg::pid_control, dg::l2norm, rtol, atol);
-                    if( p.timestepper == "multistep")
-                        multistep.step( esol, time, y0);
+                probe_ti.tic();
+                while( time < probe_t_out){
+                    if( time+dt > probe_t_out)
+                        dt = probe_t_out-time;
+                    try{
+                        if( p.timestepper == "adaptive")
+                            adapt.step( esol, time, y0, time, y0, dt, dg::pid_control, dg::l2norm, rtol, atol);
+                        if( p.timestepper == "multistep")
+                            multistep.step( esol, time, y0);
+                    }
+                    catch( dg::Fail& fail) {
+                        DG_RANK0 std::cerr << "ERROR failed to converge to "<<fail.epsilon()<<"\n";
+                        DG_RANK0 std::cerr << "Does simulation respect CFL condition?"<<std::endl;
+    #ifdef WITH_MPI
+                        MPI_Abort(MPI_COMM_WORLD, -1);
+    #endif //WITH_MPI
+                        return -1;
+                    }
                 }
-                catch( dg::Fail& fail) {
-                    DG_RANK0 std::cerr << "ERROR failed to converge to "<<fail.epsilon()<<"\n";
-                    DG_RANK0 std::cerr << "Does simulation respect CFL condition?"<<std::endl;
-#ifdef WITH_MPI
-                    MPI_Abort(MPI_COMM_WORLD, -1);
-#endif //WITH_MPI
-                    return -1;
+                //probe time
+                probe_ti.toc();
+                probe_t_out += probe_dt_out;
+                probe_start[0] = probe_i;
+                var.duration = probe_ti.diff()/(double)p.itstp;
+                DG_RANK0 std::cout << "\n\t probe step. At time"<<time<<"with timestep"<<dt<< "\n\n"<<std::flush;
+                DG_RANK0 err = nc_open(outputfile.data(), NC_WRITE, &ncid);
+                DG_RANK0 err = nc_put_vara_double( ncid, probe_tvarID, &probe_start[0], &probe_count[0], &time);
+                if(p.save_probes){
+                    for(auto& record : esol::diagnosticsProbe_list){
+                        std::vector<double> result;
+                        record.function(probe_result, var);
+                        dg::assign(probe_result, probe_transferH);
+                        for(auto probe : probepos){
+                            result.push_back(probe_transferH[probe]);
+                        }
+                    DG_RANK0 err = nc_put_vara_double(ncid, idprobe.at(record.name), probe_start, probe_count, result.data());
+                    }
+                    DG_RANK0 err = nc_close(ncid);
                 }
+                probe_i++;                
             }
+            
+            
             t_out += dt_out;
             ti.toc();
             var.duration = ti.diff() / (double) p.itstp;
@@ -457,16 +529,7 @@ int main( int argc, char* argv[])
                 DG_RANK0 err = nc_put_vara_double( ncid, id1d.at(record.name), &start, &count, &result);
             }
             DG_RANK0 err = nc_close( ncid);
-            //probe time
-            DG_RANK0 err_probe = nc_open(outputfile_probe.data(), NC_WRITE, &ncid_probe);
-            DG_RANK0 err_probe = nc_put_vara_double( ncid_probe, tvarID, &start, &count, &time);
-            if(p.save_probes){
-            for(auto& record : esol::diagnosticsProbe_list){
-                double result = record.function(var);
-                DG_RANK0 err_probe = nc_put_vara_double(ncid_probe, idprobe.at(record.name), &start, &count, &result);
-            }
-            DG_RANK0 err_probe = nc_close(ncid_probe);
-            }
+            
             ti.toc();
             DG_RANK0 std::cout << "\n\t Time for output: "<<ti.diff()<<"s\n\n"<<std::flush;
         }
