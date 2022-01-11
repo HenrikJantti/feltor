@@ -221,7 +221,6 @@ std::vector<RecordProbe> diagnosticsProbe_list = {
     {"electrons_prb", "Electron density messured by probe",
         []( dg::x::DVec& result, Variables& v ) {
             dg::blas1::copy(v.f.density(0), result);
-            std::cout<<"PROBES"<<std::endl;
         }
     },
     {"ions_prb", "Ion gyro center density messured by probe",
