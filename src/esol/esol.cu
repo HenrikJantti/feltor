@@ -90,7 +90,6 @@ int main( int argc, char* argv[])
     dg::Adaptive< dg::ERKStep< std::array<dg::x::DVec,2>>> adapt;
     double rtol = 0., atol = 0., dt = 0.;
     unsigned step = 0;
-    unsigned probe_step = 0;
     //probe time
     double probe_dt_out = p.probe_dt*p.itstp;
     double probe_t_out = time + probe_dt_out; 
@@ -218,19 +217,16 @@ int main( int argc, char* argv[])
     if( "netcdf" == p.output)
     {
         std::string inputfile = js.toStyledString(); //save input without comments, which is important if netcdf file is later read by another parser
-        std::string outputfile, outputfile_probe;
+        std::string outputfile;
         if( argc==1 || argc == 2 ){
             outputfile = "esol.nc";
-            outputfile_probe = "esol_probe.nc";
         }
         else{
             outputfile = argv[2];
-            outputfile_probe = argv[2];
         }
         /// //////////////////////set up netcdf/////////////////////////////////////
-        dg::file::NC_Error_Handle err, err_probe;
+        dg::file::NC_Error_Handle err;
         int ncid=-1;
-        int ncid_probe;
         try{
             DG_RANK0 err = nc_create( outputfile.c_str(),NC_NETCDF4|NC_CLOBBER, &ncid);
         }catch( std::exception& e)
@@ -262,7 +258,7 @@ int main( int argc, char* argv[])
             DG_RANK0 err = nc_put_att_text( ncid, NC_GLOBAL,
                 pair.first.data(), pair.second.size(), pair.second.data());  
         }
-        int dim_ids[3], probe_dim_ids[2], restart_dim_ids[2], tvarID, probe_tvarID;
+        int dim_ids[3], restart_dim_ids[2], tvarID, probe_tvarID;
         std::map<std::string, int> id1d, id3d, restart_ids, idprobe;
         dg::x::CartesianGrid2d grid_out(  0, p.lx, 0, p.ly, p.n_out, p.Nx_out, p.Ny_out, p.bc_x, p.bc_y
             #ifdef WITH_MPI
@@ -349,8 +345,8 @@ int main( int argc, char* argv[])
         int probeID, probevarID, probevarxID, probevaryID;
         if(p.save_probes){
             //Creating grids to save probe positions on
-            dg::Grid1d gridx(grid.x0(), grid.x1(), grid.n(), grid.Nx());
-            dg::Grid1d gridy(grid.y0(), grid.y1(), grid.n(), grid.Ny());
+            dg::Grid1d gridx(0, p.lx , p.n, p.Nx);
+            dg::Grid1d gridy(0, p.ly, p.n, p.Ny);
             dg::HVec x_axis(dg::create::abscissas(gridx)), y_axis(dg::create::abscissas(gridy));
             for( unsigned i=0; i<p.probes.size(); i++){
                 //this will give us the positions of the probes when evaluating on the grid
@@ -359,8 +355,6 @@ int main( int argc, char* argv[])
                 probesx.push_back(x_axis[p.probes[i][0]]);
                 probesy.push_back(y_axis[p.probes[i][1]]);
             } 
-            
-        
         
         //Creating probe_time to save time independent full fields
         DG_RANK0 err = dg::file::define_time(ncid, "probe_time", &dim_ids[0], &probe_tvarID);
