@@ -54,6 +54,7 @@ int main( int argc, char* argv[])
     ///////MAKE MODEL///////////////////////////////////////////////
     DG_RANK0 std::cout << "Constructing Esol...\n";
     esol::Esol<dg::x::CartesianGrid2d, dg::x::DMatrix, dg::x::DVec> esol( grid, p);
+    esol::Implicit<dg::x::CartesianGrid2d, dg::x::DMatrix, dg::x::DVec> implicit(grid, p);
     DG_RANK0 std::cout << "Done!\n";
 
     //////////////////create initial fields///////////////////////////////////////
@@ -88,6 +89,8 @@ int main( int argc, char* argv[])
     DG_RANK0 std::cout << "Initialize time stepper..." << std::endl;
     dg::ExplicitMultistep<std::array<dg::x::DVec, 2>> multistep;
     dg::Adaptive< dg::ERKStep< std::array<dg::x::DVec,2>>> adapt;
+    dg::Adaptive< dg::ARKStep< std::array<dg::x::DVec,2>>> adaptsemi;
+    //dg::Adaptive< dg::ARKStep< std::array<double,2>, ImplicitSolver>>
     double rtol = 0., atol = 0., dt = 0.;
     unsigned step = 0;
     //probe time
@@ -112,6 +115,15 @@ int main( int argc, char* argv[])
         atol = ws[ "timestepper"][ "atol"].asDouble( 1e-10);
         dt = 1e-6; //that should be a small enough initial guess
     }
+    else if (p.timestepper == "semi-implisit")
+    {
+        std::string tableau = ws[ "timestepper"]["tableau"].asString( "ARK-4-2-3");
+        adaptsemi.construct( tableau, y0);
+        rtol = ws[ "timestepper"][ "rtol"].asDouble( 1e-7);
+        atol = ws[ "timestepper"][ "atol"].asDouble( 1e-10);
+        dt = 1e-6; //that should be a small enough initial guess
+    }
+
     else
     {
         DG_RANK0 std::cerr<<"Error: Unrecognized timestepper: '"<<p.timestepper<<"'! Exit now!";
@@ -457,6 +469,8 @@ int main( int argc, char* argv[])
                             adapt.step( esol, time, y0, time, y0, dt, dg::pid_control, dg::l2norm, rtol, atol);
                         if( p.timestepper == "multistep")
                             multistep.step( esol, time, y0);
+                        if( p.timestepper == "semi-implisit")
+                           adaptsemi.step( esol, implicit, time, y0, time, y0, dt, dg::pid_control, dg::l2norm, rtol, atol);
                     }
                     catch( dg::Fail& fail) {
                         DG_RANK0 std::cerr << "ERROR failed to converge to "<<fail.epsilon()<<"\n";

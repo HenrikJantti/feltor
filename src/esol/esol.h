@@ -7,6 +7,59 @@ namespace esol
 {
 
 template< class Geometry, class Matrix, class container >
+struct Implicit
+{
+    Implicit( const Geometry& g, const Parameters& p):
+        m_p(p),
+        m_lapMperpN( g, p.bc_N_x, p.bc_y, dg::normed, dg::centered){ }
+        void compute_diff( double alpha, const container& nme, double beta, container& result)
+        {
+            if( m_p.nu != 0)
+            {
+                dg::blas2::gemv( m_lapMperpN, nme, m_iota);
+                dg::blas2::gemv( -alpha*m_p.nu, m_lapMperpN, m_iota, beta, result);
+            }
+            else
+                dg::blas1::scal( result, beta);
+        }
+    void operator()(double t, const std::array<container,2>& y, std::array<container,2>& yp)
+    { 
+        //Diffusion
+        if (m_p.formulation == "conservative"){
+            for( unsigned i=0; i<y.size(); i++)
+            {
+                compute_diff( 1., y[i], 1., yp[i]);  
+            }
+        }
+        else if (m_p.formulation == "ln"){
+            for( unsigned i=0; i<y.size(); i++) 
+            {
+                dg::blas1::transform( y[i], m_N[i], dg::EXP<double>() );
+                dg::blas1::scal(m_N[i], m_p.bgprofamp + m_p.profamp);
+                dg::blas1::axpby(1.0, m_N[i], -1.0, m_p.bgprofamp + m_p.profamp, m_dN[i]);
+            }
+            for( unsigned i=0; i<y.size(); i++){
+                compute_diff( 1., m_dN[i], 0.0, m_omega);
+                dg::blas1::pointwiseDivide(  m_omega, m_N[i], m_omega);
+               dg::blas1::axpby(1.0, m_omega, 1.0, yp[i]); // dt ln n += - 1/n nu lap^2 n 
+            }
+        }
+    }
+    dg::Elliptic< Geometry, Matrix, container>& lapMperpN() {return m_lapMperpN;}
+    const container& weights(){return m_lapMperpN.weights();}
+    const container& inv_weights(){return m_lapMperpN.inv_weights();}
+    const container& precond(){return m_lapMperpN.precond();} 
+
+    private:
+        const esol::Parameters m_p;
+        dg::Elliptic< Geometry, Matrix, container> m_lapMperpN;
+        std::array<container,2> m_N, m_dN;
+        container m_iota, m_omega;
+
+};
+
+
+template< class Geometry, class Matrix, class container >
 struct Esol
 {
     /**
@@ -368,7 +421,9 @@ void Esol<G,  M,  container>::operator()( double t, const std::array<container,2
             dg::blas1::axpbypgz( m_p.kappa, m_omega, m_p.tau[i]*m_p.kappa, m_iota, 1., yp[i]);
 
             //diffusion
-            compute_diff( 1., y[i], 1., yp[i]);            
+            if(m_p.timestepper != "semi-implisit"){
+                compute_diff( 1., y[i], 1., yp[i]);
+            }            
         }
         
         //adiabaticity term
@@ -483,9 +538,11 @@ void Esol<G,  M,  container>::operator()( double t, const std::array<container,2
             dg::blas1::axpbypgz( m_p.kappa, m_omega, m_p.tau[i]*m_p.kappa, m_iota, 1., yp[i]); // dt ln n += kappa dy psi + kappa*tau dy ln n
 
             //diffusion
-            compute_diff( 1., m_dN[i], 0.0, m_omega);
-            dg::blas1::pointwiseDivide(  m_omega, m_N[i], m_omega);
-            dg::blas1::axpby(1.0, m_omega, 1.0, yp[i]); // dt ln n += - 1/n nu lap^2 n
+            if(m_p.timestepper != "semi-implisit"){
+                compute_diff( 1., m_dN[i], 0.0, m_omega);
+                dg::blas1::pointwiseDivide(  m_omega, m_N[i], m_omega);
+                dg::blas1::axpby(1.0, m_omega, 1.0, yp[i]); // dt ln n += - 1/n nu lap^2 n
+            }
         }
     
         //adiabaticity term
